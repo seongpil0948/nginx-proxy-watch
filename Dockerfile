@@ -22,8 +22,8 @@ COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 
 RUN     apt-get update && \
         apt-get install -y curl && \
-        #curl --silent --location https://deb.nodesource.com/setup_16.x | bash -  && \
-        apt-get install -y nodejs wget unzip logrotate  && \
+        curl -fsSL -k https://deb.nodesource.com/setup_16.x | bash -  && \
+        apt-get install -y nodejs npm wget unzip logrotate && \
         apt-get clean
 
 RUN     npm -v && \
