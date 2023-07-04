@@ -1,0 +1,12 @@
+version: '3.4'
+
+services:
+  mobile:
+    image: front-test:latest
+    restart: always
+    expose:
+      - 3000
+    environment:
+      VIRTUAL_HOST: local.ryoga.com
+      VIRTUAL_PORT: 3000
+    network_mode: bridge

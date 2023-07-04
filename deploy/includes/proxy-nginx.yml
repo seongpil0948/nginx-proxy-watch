@@ -1,0 +1,14 @@
+version: '3.4'
+
+services:
+  # Load Balancer: NGINX
+  nginx-proxy:
+    image: nginx-watch-proxy:test #121.254.135.234:5000/ticket-front/nginx-proxy
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /web/nginx/certs:/etc/nginx/certs
+      - ./test:/var/log/nginx
+    network_mode: bridge

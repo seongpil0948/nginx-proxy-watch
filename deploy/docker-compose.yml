@@ -1,0 +1,22 @@
+version: '3.4'
+
+services:
+  # Load Balancer: NGINX
+  nginx-proxy:
+    extends:
+      file: ./includes/proxy-nginx.yml
+      service: nginx-proxy
+  mobile-blue:
+    extends:
+      file: ./includes/mobile.yml
+      service: mobile
+    depends_on:
+      #      - logstash
+      - nginx-proxy
+  mobile-green:
+    extends:
+      file: ./includes/mobile.yml
+      service: mobile
+    depends_on:
+      #      - logstash
+      - nginx-proxy

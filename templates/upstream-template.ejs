@@ -1,0 +1,7 @@
+upstream <%= serverName %> {
+   least_conn;     # 연결이 가장 적은 서버로 요청
+   <% network.forEach(nw => { %>
+   server <%= nw.ip %> max_fails=3 fail_timeout=15s;
+   <% }) %>
+   keepalive 1024;  # keepalive 커넥션
+}

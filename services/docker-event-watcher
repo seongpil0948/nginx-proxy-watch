@@ -1,0 +1,76 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          docker-event-watcher
+# Required-Start:    @network @remote_fs @local_fs
+# Required-Stop:     @network @remote_fs @local_fs
+# Default-Start:     1 2 3 4 5
+# Default-Stop:
+# Short-Description: Start/Stop docker-event-watcher
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+if [ -L "$0" ]; then
+  SCRIPTNAME=$(/bin/readlink -f "$0")
+else
+  SCRIPTNAME=$0
+fi
+
+sysconfig=$(/usr/bin/basename "$SCRIPTNAME")
+
+# shellcheck disable=SC1090
+[ -r /etc/default/"$sysconfig" ] && . /etc/default/"$sysconfig"
+
+NAME=${NAME:-docker-event-watcher}
+DAEMON=${DAEMON:-/usr/bin/node}
+DAEMON_ARGS=${DAEMON_ARGS:-/app/project/dist/index.js}
+PIDFILE=${PIDFILE:-/var/run/docker-event-watcher.pid}
+
+[ -x "$DAEMON" ] || exit 0
+
+. /lib/lsb/init-functions
+
+RETVAL=0
+
+case "$1" in
+  start)
+    log_daemon_msg "Starting $NAME" "$NAME"
+    start-stop-daemon --start \
+      --background \
+      --quiet \
+      --no-close \
+      --pidfile "$PIDFILE" \
+      --make-pidfile \
+      --exec "$DAEMON" -- "$DAEMON_ARGS" >> /var/log/docker-event-watcher/daemon.log 2>&1
+      log_end_msg $?
+      RETVAL=$?
+    ;;
+  stop)
+    log_daemon_msg "Stopping $NAME" "$NAME"
+    start-stop-daemon --stop --quiet --oknodo --retry=TERM/30/KILL/5 --pidfile "$PIDFILE"
+    rm -f "$PIDFILE"
+    log_end_msg $?
+    RETVAL=$?
+    ;;
+  restart)
+    log_daemon_msg "Restarting $NAME" "$NAME"
+    start-stop-daemon --stop --signal HUP --quiet --pidfile "$PIDFILE"
+    log_end_msg $?
+    RETVAL=$?
+    ;;
+  status)
+    status_of_proc -p "$PIDFILE" "$DAEMON" "$NAME" && exit 0 || exit $?
+    ;;
+  check)
+    status_of_proc -p "$PIDFILE" "$DAEMON" "$NAME" && RETVAL=0 || RETVAL=$?
+    if [ $RETVAL -ne 0 ];then
+      service docker-event-watcher start
+    fi
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status}"
+    exit 3
+    ;;
+esac
+
+exit $RETVAL

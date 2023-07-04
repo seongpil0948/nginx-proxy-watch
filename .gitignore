@@ -1,0 +1,8 @@
+node_modules
+project/dist
+yarn.lock
+yarn-error.log
+
+**/logs
+.idea
+.lh

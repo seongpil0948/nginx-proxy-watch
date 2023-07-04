@@ -1,0 +1,27 @@
+{
+  "name": "docker-watcher",
+  "type": "module",
+  "main": "./src/index.js",
+  "dependencies": {
+    "dockerode": "^3.3.1",
+    "ejs": "^3.1.6",
+    "lodash": "^4.17.21",
+    "node-loader": "^2.0.0",
+    "queue": "^6.0.2",
+    "ts-loader": "^9.2.8",
+    "webpack": "^5.72.0",
+    "webpack-cli": "^4.9.2"
+  },
+  "scripts": {
+    "dev": "tsc && node ./dist/index.js"
+  },
+  "bin": {
+    "app": "./dist/index.js"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.8",
+    "@types/ejs": "^3.1.0",
+    "@types/lodash": "^4.14.182",
+    "@types/node": "^17.0.24"
+  }
+}
