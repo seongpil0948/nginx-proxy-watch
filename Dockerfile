@@ -23,7 +23,9 @@ COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 RUN     apt-get update && \
         curl -fsSL -k https://deb.nodesource.com/setup_16.x | bash -  && \
         apt-get install -y nodejs wget unzip logrotate  && \
-        apt-get clean && \
+        apt-get clean
+
+RUN     npm -v && \
         npm config set strict-ssl false && \
         npm install -g typescript webpack-cli webpack
 
