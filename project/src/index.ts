@@ -141,7 +141,9 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
         | undefined;
 
       serverListState.set({
-        serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}`,
+        serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}${
+          env.group_yn?.toUpperCase() === 'Y' ? '_' + env.location_path : ''
+        }`,
         host: env.host,
         port: env.port || 80,
         network: [
@@ -158,6 +160,8 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
           env.cert === 'pem'
             ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
             : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
+        groupYn: env.group_yn?.toUpperCase(),
+        locationPath: env.location_path,
       });
       logger.info('###start###', data.id);
       logger.info('###start###', ip);
@@ -267,7 +271,14 @@ const makeFiles = (): void => {
   _.forEach<IContainersStatus>(serverListState.get(), (val, key) => {
     makeUpstream(val);
     if (val.isLocation !== 'Y') {
-      makeVhost(val);
+      if (val.groupYn === 'Y') {
+        const fPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${val.serverName}.conf`;
+        if (!existsSync(fPath)) {
+          makeVhost(val);
+        }
+      } else {
+        makeVhost(val);
+      }
     }
   });
 };
@@ -307,7 +318,9 @@ const initWatch = async (containers?: ContainerInfo[]): Promise<void> => {
               | undefined;
 
             serverListState.set({
-              serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}`,
+              serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}${
+                env.group_yn?.toUpperCase() === 'Y' ? '_' + env.location_path : ''
+              }`,
               host: env.host,
               port: env.port || 80,
               network: [
@@ -327,6 +340,8 @@ const initWatch = async (containers?: ContainerInfo[]): Promise<void> => {
                   ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) &&
                     existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
                   : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
+              groupYn: env.group_yn?.toUpperCase(),
+              locationPath: env.location_path,
             });
             logger.info('certs_crt:::', existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`));
             logger.info('certs_key:::', existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`));
