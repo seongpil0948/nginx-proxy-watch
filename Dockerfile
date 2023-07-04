@@ -20,10 +20,10 @@ COPY    services/docker-event-watcher /etc/init.d/
 COPY    scripts/docker-entrypoint.d/40-docker-event-watcher.sh /docker-entrypoint.d/
 COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 
-RUN     apt update && \
+RUN     apt-get update && \
         curl -fsSL -k https://deb.nodesource.com/setup_16.x | bash -  && \
         apt-get install -y nodejs wget unzip logrotate  && \
-        apt clean && \
+        apt-get clean && \
         npm config set strict-ssl false && \
         npm install -g typescript webpack-cli webpack
 
