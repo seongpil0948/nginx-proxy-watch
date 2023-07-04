@@ -152,9 +152,12 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
         ],
         isLocation: env.is_location?.toUpperCase(),
         location: locationList,
-        sslCert: `/etc/nginx/certs/${env.ssl || env.host}.crt`,
-        sslKey: `/etc/nginx/certs/${env.ssl || env.host}.key`,
-        https: existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
+        sslCert: env.cert === 'pem' ? `/etc/nginx/certs/${env.ssl || env.host}_crt.pem` : `/etc/nginx/certs/${env.ssl || env.host}.crt`,
+        sslKey: env.cert === 'pem' ? `/etc/nginx/certs/${env.ssl || env.host}_key.pem` : `/etc/nginx/certs/${env.ssl || env.host}.key`,
+        https:
+          env.cert === 'pem'
+            ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
+            : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
       });
       logger.info('###start###', data.id);
       logger.info('###start###', ip);
@@ -315,13 +318,18 @@ const initWatch = async (containers?: ContainerInfo[]): Promise<void> => {
               ],
               isLocation: env.is_location?.toUpperCase(),
               location: locationList,
-              sslCert: `/etc/nginx/certs/${env.ssl || env.host}.crt`,
-              sslKey: `/etc/nginx/certs/${env.ssl || env.host}.key`,
+              sslCert:
+                env.cert === 'pem' ? `/etc/nginx/certs/${env.ssl || env.host}_crt.pem` : `/etc/nginx/certs/${env.ssl || env.host}.crt`,
+              sslKey:
+                env.cert === 'pem' ? `/etc/nginx/certs/${env.ssl || env.host}_key.pem` : `/etc/nginx/certs/${env.ssl || env.host}.key`,
               https:
-                (existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`)) ||
-                (existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) &&
-                  existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)),
+                env.cert === 'pem'
+                  ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) &&
+                    existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
+                  : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
             });
+            logger.info('certs_crt:::', existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`));
+            logger.info('certs_key:::', existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`));
             logger.info('###start###', container.Id);
             logger.info('###start###', ip);
             logger.info(env);

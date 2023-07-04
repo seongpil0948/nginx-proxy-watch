@@ -8,6 +8,7 @@ export interface ContainerEnv {
   conf?: string;
   location?: string;
   is_location?: string;
+  cert?: 'pem' | 'crt';
 }
 
 export interface Template {
@@ -33,6 +34,7 @@ export interface IContainerStatusItem {
     host: string;
     path: string;
   }[];
+  cert?: 'pem' | 'crt';
 }
 
 export interface IContainersStatus {
