@@ -9,16 +9,6 @@ server {
     access_log  /var/log/nginx/<%= serverName %>/access.log;
     error_log   /var/log/nginx/<%= serverName %>/error.log;
 
-    # Do not HTTPS redirect Let'sEncrypt ACME challenge
-    location ^~ /.well-known/acme-challenge/ {
-        auth_basic off;
-        auth_request off;
-        allow all;
-        root /usr/share/nginx/html;
-        try_files $uri =404;
-        break;
-    }
-
     location / {
         return 301 https://$host$request_uri;
     }
@@ -49,52 +39,14 @@ server {
     keepalive_timeout 60;
     send_timeout 60;
 
-    #location /metrics {
-    #    stub_status on;
-    #}
-
-    # for FAKE URI
-    ##################
-    location ~* ^.+\.(cgi|py|pyc|pl|go|ogg|ogv|svg|svgz|eot|otf|mp4|ttf|rss|atom|jpeg|zip|tgz|gz|rar|bz2|doc|xls|exe|ppt|tar|mid|midi|wav|bmp|rtf)$ {
-        root   html;
-        access_log off;
-        log_not_found off;
-        expires max;
-        return 204;
-    }
-
     location = /robots.txt  { access_log off; log_not_found off; }
     location = /favicon.ico { access_log off; log_not_found off; }
     location ~ /\.          { access_log off; log_not_found off; deny all; }
     location ~ ~$           { access_log off; log_not_found off; deny all; }
 
-    location ~ /META-INF/    {
-        root   html;
-        access_log off;
-        log_not_found off;
-        expires max;
-        return 204;
-        deny all;
-    }
-
-    location ~ /WEB-INF/    {
-        root   html;
-        access_log off;
-        log_not_found off;
-        expires max;
-        return 204;
-        deny all;
-    }
-
-    # redirect server error pages to the static page /50x.html
-    # nginx html
-
     error_page  404               /404.html;	# original config
     error_page  405               =200 $uri;	# original config
     error_page   500 502 503 504  /50x.html;
-    location = /50x.html {
-        root   /webserver/web/nginx/html;
-    }
 
     <% location && location.forEach(loc => { %>
     location ^~ /<%= loc.path %> {
@@ -114,7 +66,6 @@ server {
     }
     <% }) %>
 
-    # proxy for JAVA WAS ---------------------------------
     location / {
         # AWS ALB Health Check
         if ($uri = '/status') {
