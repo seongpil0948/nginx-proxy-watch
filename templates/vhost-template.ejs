@@ -16,9 +16,6 @@ server {
 <% } %>
 server {
     listen       <%= https ?  "443 ssl" : 80 %>;
-    <% if (https) {%>
-    http2 on;
-    % }%>
     server_name  <%= locationPath ? host : serverName %>;
     server_tokens off; # version view disable
 
