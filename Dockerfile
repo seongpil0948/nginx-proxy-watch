@@ -21,7 +21,8 @@ COPY    scripts/docker-entrypoint.d/40-docker-event-watcher.sh /docker-entrypoin
 COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 
 RUN     apt-get update && \
-        curl -fsSL -k https://deb.nodesource.com/setup_16.x | bash -  && \
+        apt-get install -y curl && \
+        curl --silent --location https://deb.nodesource.com/setup_16.x | bash -  && \
         apt-get install -y nodejs wget unzip logrotate  && \
         apt-get clean
 
