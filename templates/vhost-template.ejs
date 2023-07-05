@@ -70,7 +70,7 @@ server {
     <% }) %>
 
     <% if (locationPath) {%>
-    include "/app/conf.d/location.conf/<%= host %>*.conf";
+    include "/app/conf.d/location.conf/<%= host %>/*.conf";
     <% }%>
 
     <% if (groupYn !== 'Y') {%>
