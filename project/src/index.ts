@@ -142,9 +142,9 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
 
       serverListState.set({
         serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}${
-          env.group_yn?.toUpperCase() === 'Y' ? '_' + env.location_path : ''
+          env.group_host ? '_' + env.location_path : ''
         }`,
-        host: env.host,
+        host: env.group_host || env.host,
         port: env.port || 80,
         network: [
           {
@@ -160,7 +160,7 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
           env.cert === 'pem'
             ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
             : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
-        groupYn: env.group_yn?.toUpperCase(),
+        groupYn: env.group_host ? 'Y' : 'N',
         locationPath: env.location_path,
       });
       logger.info('###start###', data.id);
@@ -319,9 +319,9 @@ const initWatch = async (containers?: ContainerInfo[]): Promise<void> => {
 
             serverListState.set({
               serverName: `${env.host}${env.is_location?.toUpperCase() === 'Y' ? LOCATION_POSTFIX : ''}${
-                env.group_yn?.toUpperCase() === 'Y' ? '_' + env.location_path : ''
+                env.group_host ? '_' + env.location_path : ''
               }`,
-              host: env.host,
+              host: env.group_host || env.host,
               port: env.port || 80,
               network: [
                 {
@@ -340,7 +340,7 @@ const initWatch = async (containers?: ContainerInfo[]): Promise<void> => {
                   ? existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`) &&
                     existsSync(`/etc/nginx/certs/${env.ssl || env.host}_key.pem`)
                   : existsSync(`/etc/nginx/certs/${env.ssl || env.host}.crt`) && existsSync(`/etc/nginx/certs/${env.ssl || env.host}.key`),
-              groupYn: env.group_yn?.toUpperCase(),
+              groupYn: env.group_host ? 'Y' : 'N',
               locationPath: env.location_path,
             });
             logger.info('certs_crt:::', existsSync(`/etc/nginx/certs/${env.ssl || env.host}_crt.pem`));
