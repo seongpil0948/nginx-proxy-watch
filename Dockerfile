@@ -8,7 +8,7 @@ ENV     TZ Asia/Seoul
 # COPY    ./HQSSL_2020.cer /opt/
 # COPY    ./HQSSL_2020.cer /usr/local/share/ca-certificates
 
-RUN     mkdir /app /app/conf.d /app/conf.d/upstream.conf /app/conf.d/vhost.conf /var/log/docker-event-watcher /etc/nginx/dhparam
+RUN     mkdir /app /app/conf.d /app/conf.d/upstream.conf /app/conf.d/vhost.conf /app/conf.d/location.conf /var/log/docker-event-watcher /etc/nginx/dhparam
 COPY    conf/nginx.conf /etc/nginx/nginx.conf
 COPY    conf/nginx /etc/logrotate.d/
 COPY    conf/index.html /web/html
