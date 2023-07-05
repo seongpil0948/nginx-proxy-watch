@@ -70,30 +70,7 @@ server {
     <% }) %>
 
     <% if (locationPath) {%>
-    location /<%= locationPath %> {
-        # Preflighted requests
-        if ($request_method = OPTIONS ) {
-            add_header "Access-Control-Allow-Origin"  *;
-            add_header "Access-Control-Allow-Methods" "GET, POST, OPTIONS, PUT, DELETE";
-            add_header "Access-Control-Allow-Headers" "Authorization, Origin, X-Requested-With, Content-Type, Accept";
-            return 200;
-        }
-
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Forwarded-Host $host;
-        proxy_set_header X-Forwarded-Server $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_http_version  1.1;
-        proxy_set_header       Upgrade $http_upgrade;
-        proxy_set_header       Connection "upgrade";
-
-        proxy_pass http://<%= serverName %>;
-        charset  UTF-8;
-        access_log  /var/log/nginx/<%= serverName %>/access-was.log timed_combined;
-        error_log   /var/log/nginx/<%= serverName %>/error-was.log;
-    }
+    include "/app/conf.d/location.conf/<%= host %>*.conf";
     <% }%>
 
     <% if (groupYn !== 'Y') {%>

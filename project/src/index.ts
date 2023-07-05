@@ -33,6 +33,12 @@ const templates: ITemplates = {
     TARGET_PATH: `${NGINX_CONF_DIR}/vhost.conf/`,
     PREFIX: 'vhost-',
   },
+  location: {
+    // PATH: path.resolve(__dirname, '../templates/vhost-template.ejs'),
+    PATH: '/app/templates/location-template.ejs',
+    TARGET_PATH: `${NGINX_CONF_DIR}/location.conf/`,
+    PREFIX: 'location-',
+  },
 };
 const LOCATION_POSTFIX = '_location';
 
@@ -171,6 +177,8 @@ const dockerStartEv = (err: any, stream?: ReadableStream) => {
         groupYn: env.group_host ? 'Y' : 'N',
         locationPath: env.location_path,
       });
+      logger.info('certs_crt:::', existsSync(`/etc/nginx/certs/${env.ssl || env.group_host || env.host}_crt.pem`));
+      logger.info('certs_key:::', existsSync(`/etc/nginx/certs/${env.ssl || env.group_host || env.host}_key.pem`));
       logger.info('###start###', data.id);
       logger.info('###start###', ip);
       logger.info(env);
@@ -275,18 +283,44 @@ const makeVhost = (conItem: IContainerStatusItem): void => {
   nginxReload();
 };
 
+const makeLocation = (conItem: IContainerStatusItem): void => {
+  if (conItem.serverName) {
+    if (conItem.network.length > 0) {
+      ejs.renderFile(templates.location.PATH, conItem, {}, (err: Error | null, str: string) => {
+        if (err) {
+          logger.error('### Location 파일생성 실패 ###', err);
+          return;
+        }
+
+        writeFileSync(`${templates.location.TARGET_PATH}/${conItem.host}/${templates.location.PREFIX}${conItem.serverName}.conf`, str);
+      });
+    } else {
+      const fPath = `${templates.location.TARGET_PATH}/${conItem.host}/${templates.location.PREFIX}${conItem.serverName}.conf`;
+
+      access(fPath, constants.F_OK, (err) => {
+        if (err) return logger.error('삭제할 수 없는 파일입니다.');
+        unlink(fPath, (err) => (err ? logger.error(err) : logger.info('삭제 완료')));
+      });
+    }
+  }
+
+  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
+
+  if (!existsSync(nginxLogPath)) {
+    mkdirSync(nginxLogPath);
+  }
+
+  nginxReload();
+};
+
 const makeFiles = (): void => {
   _.forEach<IContainersStatus>(serverListState.get(), (val, key) => {
     makeUpstream(val);
+    if (val.locationPath) {
+      makeLocation(val);
+    }
     if (val.isLocation !== 'Y') {
-      if (val.groupYn === 'Y') {
-        const fPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${val.serverName}.conf`;
-        if (!existsSync(fPath)) {
-          makeVhost(val);
-        }
-      } else {
-        makeVhost(val);
-      }
+      makeVhost(val);
     }
   });
 };
