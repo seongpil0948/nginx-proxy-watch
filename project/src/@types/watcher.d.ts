@@ -9,7 +9,7 @@ export interface ContainerEnv {
   location?: string;
   is_location?: string;
   cert?: 'pem' | 'crt';
-  group_yn?: string;
+  group_host?: string;
   location_path?: string;
 }
 
