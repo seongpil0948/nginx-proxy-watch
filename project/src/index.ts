@@ -52,10 +52,10 @@ const ServerListInstance = (): IServerListInstance => {
       set: (containerItem: IContainerStatusItem) => {
         sList = {
           ...sList,
-          [containerItem.host]: {
-            ...sList[containerItem.host],
+          [containerItem.serverName]: {
+            ...sList[containerItem.serverName],
             ...containerItem,
-            network: [...(sList[containerItem.host] ? sList[containerItem.host].network : []), ...containerItem.network],
+            network: [...(sList[containerItem.serverName] ? sList[containerItem.serverName].network : []), ...containerItem.network],
           },
         };
       },
