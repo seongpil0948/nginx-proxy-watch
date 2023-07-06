@@ -42,15 +42,6 @@ server {
     keepalive_timeout 60;
     send_timeout 60;
 
-    location = /robots.txt  { access_log off; log_not_found off; }
-    location = /favicon.ico { access_log off; log_not_found off; }
-    location ~ /\.          { access_log off; log_not_found off; deny all; }
-    location ~ ~$           { access_log off; log_not_found off; deny all; }
-
-    error_page  404               /404.html;	# original config
-    error_page  405               =200 $uri;	# original config
-    error_page   500 502 503 504  /50x.html;
-
     <% location && location.forEach(loc => { %>
     location ^~ /<%= loc.path %> {
         rewrite ^/<%= loc.path %>/(.*)$ /$1 break;
