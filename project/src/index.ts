@@ -261,11 +261,16 @@ const makeVhost = (conItem: IContainerStatusItem): void => {
         }
 
         // writeFileSync(path.resolve(__dirname, `./${templates.vhost.PREFIX}${conItem.serverName}.conf`), str);
-        writeFileSync(`${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${conItem.serverName}.conf`, str);
+        writeFileSync(
+          `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${conItem.groupYn === 'Y' ? conItem.host : conItem.serverName}.conf`,
+          str
+        );
       });
     } else {
       // const fPath = path.resolve(__dirname, `./${templates.vhost.PREFIX}${conItem.serverName}.conf`);
-      const fPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${conItem.serverName}.conf`;
+      const fPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${
+        conItem.groupYn === 'Y' ? conItem.host : conItem.serverName
+      }.conf`;
 
       access(fPath, constants.F_OK, (err) => {
         if (err) return logger.error('삭제할 수 없는 파일입니다.');
