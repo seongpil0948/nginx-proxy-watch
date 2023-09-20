@@ -11,7 +11,7 @@ ENV     TZ Asia/Seoul
 RUN     mkdir /app /app/conf.d /app/conf.d/upstream.conf /app/conf.d/vhost.conf /app/conf.d/location.conf /var/log/docker-event-watcher /etc/nginx/dhparam
 COPY    conf/nginx.conf /etc/nginx/nginx.conf
 COPY    conf/nginx /etc/logrotate.d/
-COPY    conf/index.html /web/html
+COPY    conf/error.html /web/error.html
 COPY    scripts/ /app/scripts/
 COPY    templates/ /app/templates/
 COPY    project /app/project/
