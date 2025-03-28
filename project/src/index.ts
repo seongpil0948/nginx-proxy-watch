@@ -4,14 +4,8 @@ import * as ejs from 'ejs';
 import { ContainerEnv, IContainersStatus, IContainerStatusItem, IServerList, IServerListInstance, ITemplates } from '@interfaces/watcher';
 import { exec } from 'child_process';
 import ReadableStream = NodeJS.ReadableStream;
-import { access, constants, createWriteStream, existsSync, mkdirSync, unlink, writeFileSync } from 'fs';
-import * as path from 'path';
-import * as Console from 'console';
-
-const logger = new Console.Console(
-  createWriteStream('/var/log/docker-event-watcher/info.log', { flags: 'a' }),
-  createWriteStream('/var/log/docker-event-watcher/error.log', { flags: 'a' })
-);
+import { access, constants, existsSync, mkdirSync, unlink, writeFileSync } from 'fs';
+import { logger } from './logging';
 
 // const logger = console;
 // const __dirname = path.resolve();

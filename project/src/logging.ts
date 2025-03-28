@@ -8,7 +8,7 @@ const logFormat = printf(({ level, message, timestamp }: any) => {
 });
 
 // 로거 생성
-const logger = createLogger({
+export const logger = createLogger({
   format: combine(
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
     logFormat
