@@ -1,0 +1,19 @@
+
+/var/log/docker-event-watcher/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 644 root root
+    sharedscripts
+    postrotate
+        if [ -f /var/run/docker-event-watcher.pid ]; then
+            kill -USR1 `cat /var/run/docker-event-watcher.pid`
+        fi
+        if [ -f /run/docker-event-watcher.pid ]; then
+            kill -USR1 `cat /run/docker-event-watcher.pid`
+        fi
+    endscript
+}

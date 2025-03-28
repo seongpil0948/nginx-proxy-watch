@@ -1,13 +1,19 @@
 [Unit]
 Description=Docker Event Watcher for Reverse-Proxy
 Documentation=https://github.com/HyeokrohJu/nginx-proxy-watch/tree/new_nginx_watch
+After=docker.service
 
 [Service]
 Type=forking
 PIDFile=/var/run/docker-event-watcher.pid
+Environment="WATCHER_LOG_DIR=/var/log/docker-event-watcher"
 ExecStart=/usr/bin/node /app/project/dist/index.js
 ExecReload=/bin/sh -c "/bin/kill -s HUP $(/bin/cat /var/run/docker-event-watcher.pid)"
 ExecStop=/bin/sh -c "/bin/kill -s TERM $(/bin/cat /var/run/docker-event-watcher.pid)"
+StandardOutput=append:/var/log/docker-event-watcher/daemon.log
+StandardError=append:/var/log/docker-event-watcher/error.log
+Restart=always
+RestartSec=10s
 
 [Install]
 WantedBy=multi-user.target
