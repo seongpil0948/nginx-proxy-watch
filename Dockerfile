@@ -20,11 +20,12 @@ COPY    services/docker-event-watcher /etc/init.d/
 COPY    scripts/docker-entrypoint.d/40-docker-event-watcher.sh /docker-entrypoint.d/
 COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 
-RUN     apt-get update && \
-        apt-get install -y curl && \
-        curl -fsSL -k https://deb.nodesource.com/setup_16.x | bash -  && \
-        apt-get install -y nodejs npm wget unzip logrotate && \
-        apt-get clean
+RUN apt-get update && \
+    apt-get install -y curl wget unzip logrotate && \
+    curl -fsSL https://deb.nodesource.com/setup_16.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean
+
 
 RUN     npm -v && \
         npm config set strict-ssl false && \
