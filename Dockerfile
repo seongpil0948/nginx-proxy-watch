@@ -3,7 +3,7 @@ FROM nginx
 LABEL category="nginx"
 USER    0
 
-ENV     TZ Asia/Seoul
+ENV     TZ=Asia/Seoul
 
 # COPY    ./HQSSL_2020.cer /opt/
 # COPY    ./HQSSL_2020.cer /usr/local/share/ca-certificates
