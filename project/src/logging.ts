@@ -33,7 +33,7 @@ const logFormat = winston.format.printf((info: ExtendedTransformableInfo) => {
 });
 
 // 로그 저장 경로 설정 - OpenTelemetry 경로와 일치시킴
-const LOG_DIR = '/data/nginx-proxy-watch/logs';
+const LOG_DIR = '/var/log/nginx-proxy-watch';
 
 // 로그 파일 설정
 const logConfiguration = {

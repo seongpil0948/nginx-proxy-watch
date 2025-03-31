@@ -1,5 +1,5 @@
 
-/var/log/docker-event-watcher/*.log {
+/var/log/nginx-proxy-watch/*.log {
     su root root
     daily
     missingok

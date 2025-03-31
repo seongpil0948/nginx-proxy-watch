@@ -1,4 +1,5 @@
 /var/log/nginx/*/*.log {
+        su root root
         daily
         missingok
         rotate 52
@@ -7,12 +8,26 @@
         notifempty
         create 640 nginx adm
         sharedscripts
+        copytruncate
         postrotate
-                if [ -f /var/run/nginx.pid ]; then
-                        kill -USR1 `cat /var/run/nginx.pid`
-                fi
-                if [ -f /run/nginx.pid ]; then
-                        kill -USR1 `cat /run/nginx.pid`
-                fi
+                kill -USR1 `cat /var/run/nginx.pid`
         endscript
 }
+
+/var/log/nginx/*.log {
+        su root root
+        daily
+        missingok
+        rotate 52
+        compress
+        delaycompress
+        notifempty
+        create 640 nginx adm
+        sharedscripts
+        copytruncate
+        postrotate
+                kill -USR1 `cat /var/run/nginx.pid`
+        endscript
+}
+
+

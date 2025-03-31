@@ -12,6 +12,7 @@ RUN     mkdir /app /app/conf.d /app/conf.d/upstream.conf /app/conf.d/vhost.conf 
 COPY    conf/nginx.conf /etc/nginx/nginx.conf
 COPY    conf/nginx /etc/logrotate.d/
 COPY    conf/docker-event-watcher-logrotate /etc/logrotate.d/
+COPY    conf/nginx-proxy-watch-logrotate /etc/logrotate.d/
 COPY    conf/error.html /web/error.html
 COPY    scripts/ /app/scripts/
 COPY    templates/ /app/templates/
@@ -27,6 +28,10 @@ RUN apt-get update && \
         apt-get install -y nodejs && \
         apt-get clean
 
+
+RUN chmod 644 /etc/logrotate.d/nginx && \
+        chmod -R 644 /etc/logrotate.d && \
+        chown -R root:root /etc/logrotate.d
 
 RUN     npm -v && \
         npm config set strict-ssl false && \
