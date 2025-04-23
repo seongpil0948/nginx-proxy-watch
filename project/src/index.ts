@@ -99,7 +99,11 @@ const getContainerEnv = (envs?: string[]): ContainerEnv => {
 
       if (key.startsWith(ENV_PREFIX)) {
         const normalizedKey = key.substring(ENV_PREFIX.length).toLowerCase();
-        logger.debug(`환경변수 발견: ${normalizedKey} = ${value}`);
+        logger.debug(`환경변수 파싱: ${normalizedKey}=${value}`, {
+          operation: 'getContainerEnv',
+          key: normalizedKey,
+          // value: value // 필요시 값도 로깅 (민감 정보 주의)
+        });
         return {
           ...prev,
           [normalizedKey]: value,
@@ -119,53 +123,77 @@ const collectContainerStats = async (containerId: string): Promise<ContainerStat
   try {
     const container = docker.getContainer(containerId);
     const stats = await container.stats({ stream: false });
-    logger.debug(`컨테이너 ${containerId} 통계 수집 성공`);
+    // debug 레벨 사용 및 컨텍스트 추가
+    logger.debug(`컨테이너 통계 수집 성공`, { operation: 'collectContainerStats', containerId });
     return stats;
-  } catch (error) {
-    logger.error(`컨테이너 ${containerId} 통계 수집 실패: ${error}`);
+  } catch (error: any) {
+    // 에러 로깅 개선: 에러 객체와 컨텍스트 포함
+    logger.error(`컨테이너 통계 수집 실패`, {
+      operation: 'collectContainerStats',
+      containerId,
+      error: error.message,
+      stack: error.stack, // winston format에서 처리하지만 명시적으로 포함 가능
+    });
     throw error;
   }
 };
 
-// 도커 이벤트 핸들러 개선
 const dockerEventHandler = (eventType: string) => async (err: any, stream?: ReadableStream) => {
-  logger.info(`### Docker ${eventType} Event 모니터링 시작 ###`);
+  // 구조화된 로깅 사용
+  logger.info(`Docker 이벤트 스트림 시작`, { operation: 'dockerEventHandler', eventType });
   if (err || !stream) {
-    logger.error(`### Docker ${eventType} Event Error ###`, err?.message || '스트림 없음');
+    logger.error(`Docker 이벤트 스트림 연결 실패`, {
+      operation: 'dockerEventHandler',
+      eventType,
+      error: err?.message || '스트림 없음',
+      stack: err?.stack,
+    });
     return;
   }
 
   stream.on('data', async (chunk) => {
+    let data;
     try {
-      const data = JSON.parse(chunk.toString());
+      data = JSON.parse(chunk.toString());
 
-      // 이벤트 메타데이터 로깅
-      logger.info(`도커 이벤트 감지: ${eventType}`, {
-        id: data.id,
-        time: data.time,
-        status: data.status,
-        type: data.Type,
-        action: data.Action,
+      // 커스텀 로거 메서드 사용
+      logger.dockerEvent(eventType, data.id, {
+        action: data.Action, // Docker 이벤트의 Action 필드
+        actorId: data.actor?.ID,
+        actorAttributes: data.actor?.Attributes,
+        // 필요한 다른 data 필드 추가 가능
       });
 
+      // 이벤트 타입별 처리 로직
       if (eventType === 'start') {
         await handleContainerStart(data.id);
       } else if (eventType === 'stop' || eventType === 'die' || eventType === 'destroy') {
-        await handleContainerStop(data.id);
+        await handleContainerStop(data.id, eventType); // eventType 전달하여 로그에 활용
       } else {
-        // 기타 이벤트 처리
         await handleOtherEvents(data.id, eventType);
       }
-    } catch (error) {
-      logger.error(`이벤트 처리 중 오류 발생: ${error}`, { eventType });
+    } catch (error: any) {
+      logger.error(`이벤트 처리 중 오류 발생`, {
+        operation: 'dockerEventHandler_data',
+        eventType,
+        containerId: data?.id, // 오류 발생 전 파싱된 ID가 있다면 포함
+        rawChunk: chunk.toString(), // 원본 데이터 로깅
+        error: error.message,
+        stack: error.stack,
+      });
     }
   });
 
   stream.on('error', (error) => {
-    logger.error(`Docker 이벤트 스트림 오류: ${error.message}`, { eventType });
-    // 재연결 로직 구현
+    logger.error(`Docker 이벤트 스트림 오류`, {
+      operation: 'dockerEventHandler_stream_error',
+      eventType,
+      error: error.message,
+      stack: error.stack,
+    });
+    // 재연결 로직
     setTimeout(() => {
-      logger.info(`Docker ${eventType} 이벤트 스트림 재연결 시도`);
+      logger.info(`Docker 이벤트 스트림 재연결 시도`, { operation: 'dockerEventHandler_reconnect', eventType });
       docker.getEvents({ filters: { event: [eventType] } }, dockerEventHandler(eventType));
     }, 5000);
   });
@@ -275,56 +303,96 @@ const handleContainerStart = async (containerId: string): Promise<void> => {
 };
 
 // 컨테이너 중지 이벤트 처리 함수
-const handleContainerStop = async (containerId: string): Promise<void> => {
+const handleContainerStop = async (containerId: string, eventType: string): Promise<void> => {
+  logger.info(`컨테이너 중지/소멸 처리 시작`, { operation: 'handleContainerStop', containerId, eventType });
   try {
-    // 컨테이너 정보를 로깅하기 위해 먼저 시도
+    let containerName = 'unknown';
+    let containerImage = 'unknown';
+    let virtualHost = 'unknown';
+
+    // 중지된 컨테이너 정보 조회 시도 (실패 가능성 있음)
     try {
       const container = docker.getContainer(containerId);
       const info = await container.inspect();
       const env = getContainerEnv(info?.Config.Env);
-      logger.info(`컨테이너 ${containerId} 중지됨:`, {
-        name: info.Name,
-        image: info.Config.Image,
-        env: env.host ? `VIRTUAL_HOST=${env.host}` : '호스트 없음',
+      containerName = info.Name;
+      containerImage = info.Config.Image;
+      virtualHost = env.host || '호스트 없음';
+      logger.info(`중지된 컨테이너 정보 확인`, {
+        operation: 'handleContainerStop_inspect',
+        containerId,
+        containerName,
+        containerImage,
+        virtualHost,
       });
-    } catch (inspectError) {
-      logger.warn(`중지된 컨테이너 ${containerId} 정보 조회 실패: ${inspectError}`);
+    } catch (inspectError: any) {
+      logger.warn(`중지된 컨테이너 정보 조회 실패`, {
+        operation: 'handleContainerStop_inspect_fail',
+        containerId,
+        error: inspectError.message,
+      });
     }
 
-    // 서버 리스트에서 컨테이너 ID 제거
-    serverListState.del(containerId);
-    logger.info(`컨테이너 ${containerId} 서버 목록에서 제거됨`);
+    // 커스텀 로거 메서드 사용 (상태 변경)
+    logger.containerState(containerId, eventType, {
+      // 'stop', 'die', 'destroy' 등 실제 이벤트 타입 사용
+      containerName, // 조회 성공 시 실제 이름, 실패 시 'unknown'
+      containerImage,
+      virtualHost,
+    });
 
-    // 설정 파일 갱신
+    serverListState.del(containerId);
+    logger.info(`컨테이너 서버 목록에서 제거`, { operation: 'handleContainerStop', containerId });
+
     await makeFiles();
-  } catch (error) {
-    logger.error(`컨테이너 중지 이벤트 처리 중 오류: ${error}`);
+  } catch (error: any) {
+    logger.error(`컨테이너 중지/소멸 처리 중 오류`, {
+      operation: 'handleContainerStop',
+      containerId,
+      eventType,
+      error: error.message,
+      stack: error.stack,
+    });
   }
 };
 
 // 기타 이벤트 처리 함수
 const handleOtherEvents = async (containerId: string, eventType: string): Promise<void> => {
+  logger.info(`기타 Docker 이벤트 처리 시작`, { operation: 'handleOtherEvents', containerId, eventType });
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
 
-    logger.info(`컨테이너 ${containerId} ${eventType} 이벤트:`, {
-      name: info.Name,
-      image: info.Config.Image,
-      state: info.State.Status,
+    // 커스텀 로거 메서드 사용 또는 일반 info 사용
+    logger.info(`컨테이너 이벤트 감지: ${eventType}`, {
+      operation: 'handleOtherEvents',
+      containerId,
+      eventType,
+      containerName: info.Name,
+      containerImage: info.Config.Image,
+      containerState: info.State.Status,
     });
 
-    // pause/unpause 이벤트에 대한 특별 처리
-    if (eventType === 'pause' || eventType === 'unpause') {
-      logger.info(`컨테이너 ${containerId}가 ${eventType === 'pause' ? '일시중지' : '재개'}됨`);
+    // 특정 이벤트 타입에 대한 추가 로깅
+    if (eventType === 'pause') {
+      logger.containerState(containerId, 'paused', { containerName: info.Name });
+    } else if (eventType === 'unpause') {
+      logger.containerState(containerId, 'resumed', { containerName: info.Name });
+    } else if (eventType === 'restart') {
+      logger.info(`컨테이너 재시작 감지, 시작 처리 호출`, { operation: 'handleOtherEvents', containerId });
+      // 재시작은 내부적으로 stop -> start 흐름일 수 있으나, 명시적 restart 이벤트 처리
+      await handleContainerStart(containerId); // 재시작 후 설정 적용
     }
-
-    // restart 이벤트에 대한 처리
-    if (eventType === 'restart') {
-      await handleContainerStart(containerId);
-    }
-  } catch (error) {
-    logger.warn(`${eventType} 이벤트 처리 중 오류: ${error}`);
+    // 필요한 다른 이벤트 타입 처리 추가
+  } catch (error: any) {
+    // inspect 실패 등 오류 처리
+    logger.warn(`${eventType} 이벤트 처리 중 오류 (정보 조회 등)`, {
+      operation: 'handleOtherEvents',
+      containerId,
+      eventType,
+      error: error.message,
+      // stack: error.stack // warn 레벨에서는 스택 제외 고려
+    });
   }
 };
 
@@ -371,16 +439,26 @@ const formatBytes = (bytes: number, decimals = 2): string => {
 // Nginx 재시작 함수 개선
 const nginxReload = async (): Promise<void> => {
   return new Promise((resolve, reject) => {
-    logger.info('Nginx 설정 재로드 시작');
+    // 커스텀 로거 메서드 사용
+    logger.nginxConfig('재로드 시도', 'N/A', { operation: 'nginxReload' });
     exec('nginx -s reload', (error, stdout, stderr) => {
-      if (stdout) logger.info(`Nginx 재로드 출력: ${stdout}`);
-      if (stderr) logger.warn(`Nginx 재로드 오류 출력: ${stderr}`);
+      // stdout/stderr는 debug 레벨로 로깅하는 것이 일반적
+      if (stdout) logger.debug(`Nginx 재로드 stdout`, { operation: 'nginxReload', output: stdout });
+      if (stderr) logger.debug(`Nginx 재로드 stderr`, { operation: 'nginxReload', output: stderr }); // 오류성 stderr도 있을 수 있음
 
       if (error) {
-        logger.error(`Nginx 재로드 실패: ${error.message}`);
+        // 커스텀 로거 메서드 사용 및 에러 정보 포함
+        logger.error(`Nginx 재로드 실패`, {
+          operation: 'nginxReload',
+          action: '재로드 실패',
+          error: error.message,
+          stack: error.stack,
+          stderr, // stderr는 실패 시 중요한 정보일 수 있음
+        });
         reject(error);
       } else {
-        logger.info('Nginx 설정 재로드 성공');
+        // 커스텀 로거 메서드 사용
+        logger.nginxConfig('재로드 성공', 'N/A', { operation: 'nginxReload' });
         resolve();
       }
     });
@@ -390,18 +468,21 @@ const nginxReload = async (): Promise<void> => {
 // Upstream 설정 파일 생성 함수 개선
 const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
   if (!conItem.serverName) {
-    logger.warn('serverName이 없는 컨테이너 항목을 무시합니다.');
+    logger.warn('serverName 없는 컨테이너 항목, Upstream 생성 건너뜀', {
+      operation: 'makeUpstream',
+      containerData: conItem, // 문제 분석을 위해 전체 데이터 로깅 고려
+    });
     return;
   }
 
   const configPath = `${templates.upstream.TARGET_PATH}/${templates.upstream.PREFIX}${conItem.serverName}.conf`;
-  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
+  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`; // 로그 경로도 메타데이터에 포함하면 좋음
 
   try {
     if (conItem.network.length > 0) {
-      logger.debug(`${conItem.serverName}에 대한 Upstream 설정 생성 시작`);
+      logger.debug(`Upstream 설정 생성 시작`, { operation: 'makeUpstream', serverName: conItem.serverName, configPath });
 
-      // EJS 템플릿 렌더링을 Promise로 변환
+      // EJS 렌더링
       const rendered = await new Promise<string>((resolve, reject) => {
         ejs.renderFile(templates.upstream.PATH, conItem, {}, (err, str) => {
           if (err) reject(err);
@@ -409,31 +490,50 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
         });
       });
 
-      // 설정 파일 작성
+      // 파일 쓰기
       writeFileSync(configPath, rendered);
-      logger.info(`${configPath} 설정 파일 생성 완료`);
+      // 커스텀 로거 메서드 사용
+      logger.nginxConfig('생성', configPath, { serverName: conItem.serverName, type: 'upstream' });
     } else {
-      // 네트워크가 없으면 설정 파일 제거
+      // 설정 파일 제거 로직
       if (existsSync(configPath)) {
+        logger.info(`네트워크 정보 없음, Upstream 설정 파일 제거 시도`, {
+          operation: 'makeUpstream',
+          serverName: conItem.serverName,
+          configPath,
+        });
         unlink(configPath, (err) => {
           if (err) {
-            logger.error(`${configPath} 삭제 실패: ${err.message}`);
+            logger.error(`Upstream 설정 파일 삭제 실패`, {
+              operation: 'makeUpstream_delete',
+              serverName: conItem.serverName,
+              configPath,
+              error: err.message,
+              stack: err.stack,
+            });
           } else {
-            logger.info(`${configPath} 삭제 완료`);
+            // 커스텀 로거 메서드 사용
+            logger.nginxConfig('삭제', configPath, { serverName: conItem.serverName, type: 'upstream', reason: 'No network' });
           }
         });
       } else {
-        logger.debug(`${configPath} 파일이 존재하지 않아 삭제를 건너뜁니다.`);
+        logger.debug(`Upstream 설정 파일 없음, 삭제 건너뜀`, { operation: 'makeUpstream', serverName: conItem.serverName, configPath });
       }
     }
 
-    // Nginx 로그 디렉토리 생성
+    // Nginx 로그 디렉토리 생성 (디버그 레벨 유지 또는 info로 변경 고려)
     if (!existsSync(nginxLogPath)) {
       mkdirSync(nginxLogPath, { recursive: true });
-      logger.debug(`${nginxLogPath} 로그 디렉토리 생성 완료`);
+      logger.debug(`Nginx 로그 디렉토리 생성`, { operation: 'makeUpstream_logdir', path: nginxLogPath });
     }
-  } catch (error) {
-    logger.error(`Upstream 설정 파일 생성 중 오류: ${error}`);
+  } catch (error: any) {
+    logger.error(`Upstream 설정 처리 중 오류`, {
+      operation: 'makeUpstream',
+      serverName: conItem.serverName,
+      configPath, // 오류 발생 시점의 configPath
+      error: error.message,
+      stack: error.stack,
+    });
   }
 };
 
@@ -547,31 +647,46 @@ const makeLocation = async (conItem: IContainerStatusItem): Promise<void> => {
 
 // 모든 설정 파일 생성 함수 개선
 const makeFiles = async (): Promise<void> => {
+  logger.info('Nginx 설정 파일 생성/갱신 시작', { operation: 'makeFiles' });
   try {
-    logger.info('Nginx 설정 파일 생성 시작');
     const serverList = serverListState.get();
     const promises = [];
+    const serverNames = Object.keys(serverList);
+
+    logger.info(`처리 대상 서버 ${serverNames.length}개`, { operation: 'makeFiles', servers: serverNames });
 
     for (const key in serverList) {
       const val = serverList[key];
+      // 각 make 함수 호출 시 로깅은 해당 함수 내부에서 처리
       promises.push(makeUpstream(val));
 
       if (val.locationPath) {
         promises.push(makeLocation(val));
       }
 
+      // isLocation이 'Y'가 아닌 경우 (즉, 메인 vhost 또는 group vhost)
       if (val.isLocation !== 'Y') {
+        // group host인 경우, 동일 host에 대해 vhost 생성이 중복될 수 있음.
+        // makeVhost 내부에서 파일 존재 여부 등으로 처리하거나, 여기서 중복 호출 방지 로직 추가 필요
+        // 예시: group host 별로 한 번만 vhost 생성하도록 관리
+        // (간단하게는 val.groupYn === 'Y' && val.host === key 또는 특정 플래그로 관리)
+        // 여기서는 일단 모든 non-location에 대해 호출한다고 가정
         promises.push(makeVhost(val));
       }
     }
 
     await Promise.all(promises);
-    logger.info('모든 설정 파일 생성 완료');
+    logger.info('모든 설정 파일 생성/갱신 완료', { operation: 'makeFiles', count: serverNames.length });
 
-    // Nginx 재시작
+    // Nginx 재시작 (내부에서 로깅 처리)
     await nginxReload();
-  } catch (error) {
-    logger.error(`설정 파일 생성 중 오류: ${error}`);
+  } catch (error: any) {
+    logger.error(`설정 파일 생성/갱신 중 오류`, {
+      operation: 'makeFiles',
+      error: error.message,
+      stack: error.stack,
+    });
+    // 오류 발생 시 Nginx 리로드를 건너뛸지 여부 결정 필요
   }
 };
 

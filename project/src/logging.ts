@@ -94,17 +94,19 @@ const logger = baseLogger as ExtendedLogger;
 
 // Docker 이벤트 로깅 함수
 logger.dockerEvent = (eventType: string, containerId: string, details: Record<string, any> = {}) => {
-  logger.info(`Docker ${eventType} 이벤트`, {
+  logger.info(`Docker 이벤트 감지: ${eventType}`, {
+    operation: 'docker_event', // 작업 종류 명시
     eventType,
     containerId,
-    timestamp: new Date().toISOString(),
-    ...details
+    timestamp: new Date().toISOString(), // 타임스탬프는 winston이 자동으로 추가하지만, 명시해도 좋음
+    ...details // 추가 정보 포함
   });
 };
 
 // 컨테이너 상태 변경 로깅 함수
 logger.containerState = (containerId: string, state: string, details: Record<string, any> = {}) => {
-  logger.info(`컨테이너 ${containerId} 상태 변경: ${state}`, {
+  logger.info(`컨테이너 상태 변경: ${state}`, {
+    operation: 'container_state_change', // 작업 종류 명시
     containerId,
     state,
     timestamp: new Date().toISOString(),
@@ -114,8 +116,9 @@ logger.containerState = (containerId: string, state: string, details: Record<str
 
 // Nginx 설정 변경 로깅 함수
 logger.nginxConfig = (action: string, configPath: string, details: Record<string, any> = {}) => {
-  logger.info(`Nginx 설정 ${action}: ${configPath}`, {
-    action,
+  logger.info(`Nginx 설정 ${action}`, {
+    operation: 'nginx_config', // 작업 종류 명시
+    action, // '생성', '삭제', '재로드 시도', '재로드 성공', '재로드 실패' 등
     configPath,
     timestamp: new Date().toISOString(),
     ...details
