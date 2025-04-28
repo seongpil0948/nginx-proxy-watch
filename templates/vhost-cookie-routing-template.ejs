@@ -1,0 +1,132 @@
+<%# --- 쿠키 기반 라우팅 설정 (템플릿 시작 부분에 추가) --- %>
+<%# 필요한 변수: routingCookieName, routingMap, defaultUpstream, hostHeaderMap (선택적) %>
+<% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
+map $cookie_<%= routingCookieName %> $target_upstream {
+    default   <%= defaultUpstream || serverName %>; 
+    <% Object.keys(routingMap).forEach(cookieValue => { %>
+    "<%= cookieValue %>"       <%= routingMap[cookieValue] %>;
+    <% }); %>
+}
+
+map $target_upstream $upstream_host_header {
+    <% if (typeof hostHeaderMap !== 'undefined' && Object.keys(hostHeaderMap).length > 0) { %>
+      <% Object.keys(hostHeaderMap).forEach(upstreamName => { %>
+      <%= upstreamName %>   "<%= hostHeaderMap[upstreamName] %>";
+      <% }); %>
+    <% } %>
+    default          $http_host;
+}
+<% } %>
+
+<% if(https) {%>
+server {
+    listen 80 ;
+    server_name  <%= locationPath ? host : serverName %>;
+    server_tokens off;
+
+    charset utf-8;
+    access_log  /var/log/nginx/<%= serverName %>/access.log;
+    error_log   /var/log/nginx/<%= serverName %>/error.log;
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+<% } %>
+server {
+    listen       <%= https ? "443 ssl" : 80 %>;
+    <% if (https) {%>
+    http2 on;
+    <% }%>
+    server_name  <%= locationPath ? host : serverName %>;
+    server_tokens off;
+
+    charset utf-8;
+
+    access_log  /var/log/nginx/<%= serverName %>/access.log timed_combined; # 로그 포맷 지정
+    error_log   /var/log/nginx/<%= serverName %>/error.log warn; # 에러 레벨 지정
+
+    <% if (https) {%>
+    ssl_session_timeout 5m;
+    ssl_session_cache shared:SSL:50m;
+    ssl_session_tickets off;
+    ssl_certificate <%= sslCert %>;
+    ssl_certificate_key <%= sslKey %>;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    <% }%>
+
+    client_max_body_size 50M;
+    client_body_timeout 12;
+    client_header_timeout 12;
+    keepalive_timeout 180; # 기본값 65에서 증가
+    send_timeout 180;
+
+    # --- 공통 프록시 헤더 설정 ---
+    proxy_http_version  1.1;
+    proxy_set_header Connection "upgrade"; # WebSocket 등을 위한 설정 유지
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme; # http 또는 https 자동 감지
+
+    <%# --- Location 기반 라우팅 (기존 로직) --- %>
+    <% location && location.forEach(loc => { %>
+    location ^~ /<%= loc.path %> {
+        rewrite ^/<%= loc.path %>/(.*)$ /$1 break;
+
+        # Location별 프록시 설정 (Host 헤더 등은 기본값 사용 또는 loc별 설정 필요시 추가)
+        proxy_set_header Host $http_host; # 필요시 loc.host 등으로 변경
+        # ... 기타 필요한 Location별 헤더 ...
+
+        proxy_pass http://<%= loc.host %>;
+
+        # Location별 로그 (선택 사항)
+        access_log  /var/log/nginx/<%= loc.host %>/access-was.log timed_combined;
+        error_log   /var/log/nginx/<%= loc.host %>/error-was.log;
+    }
+    <% }) %>
+
+    <%# --- Group Host Location 포함 (기존 로직) --- %>
+    <% if (locationPath) {%>
+    include "/app/conf.d/location.conf/<%= host %>/*.conf";
+    <% }%>
+
+    <%# --- 루트 Location (/) 처리 --- %>
+    <% if (groupYn !== 'Y' || !locationPath) { %>
+      <%# group host의 루트가 아니거나, locationPath가 없는 일반 vhost의 루트 %>
+      location / {
+          # Health Check
+          if ($uri = '/status') {
+              access_log off;
+              return 200 "OK";
+          }
+
+          # 프록시 헤더 설정
+          <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
+            # 쿠키 라우팅 시 Host 헤더는 map 사용
+            proxy_set_header Host $upstream_host_header;
+          <% } else { %>
+            # 일반 라우팅 시 Host 헤더는 원래 값 사용
+            proxy_set_header Host $http_host;
+          <% } %>
+          # 나머지 공통 헤더는 server 블록에서 설정됨
+
+          # 프록시 패스 설정
+          <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
+            # 쿠키 라우팅 변수 사용
+            proxy_pass http://$target_upstream;
+          <% } else { %>
+            # 쿠키 라우팅 없을 시 기본 업스트림 사용
+            proxy_pass http://<%= serverName %>;
+          <% } %>
+
+          # 루트 location 로그
+          charset  UTF-8;
+          access_log  /var/log/nginx/<%= serverName %>/access-was.log timed_combined;
+          error_log   /var/log/nginx/<%= serverName %>/error-was.log;
+      }
+    <% } %>
+
+    location ~ /\.ht {
+        deny all;
+    }
+}

@@ -11,6 +11,11 @@ export interface ContainerEnv {
   cert?: 'pem' | 'crt';
   group_host?: string;
   location_path?: string;
+
+  cookie_name?: string;
+  routing_map?: { [key: string]: string };
+  default_upstream?: string;
+  host_header_map?: { [key: string]: string };
 }
 
 export interface Template {
@@ -39,6 +44,11 @@ export interface IContainerStatusItem {
   cert?: 'pem' | 'crt';
   groupYn?: string;
   locationPath?: string;
+
+  routingCookieName?: string;
+  routingMap?: { [key: string]: string };
+  defaultUpstream?: string;
+  hostHeaderMap?: { [key: string]: string };  
 }
 
 export interface IContainersStatus {

@@ -8,9 +8,8 @@
         notifempty
         create 640 nginx adm
         sharedscripts
-        copytruncate
         postrotate
-                kill -USR1 `cat /var/run/nginx.pid`
+                nginx -s reopen > /dev/null 2>&1 || true
         endscript
 }
 
@@ -24,9 +23,8 @@
         notifempty
         create 640 nginx adm
         sharedscripts
-        copytruncate
         postrotate
-                kill -USR1 `cat /var/run/nginx.pid`
+                nginx -s reopen > /dev/null 2>&1 || true
         endscript
 }
 

@@ -1,16 +1,16 @@
 import _ from 'lodash';
-import Dockerode, { ContainerInfo, ContainerInspectInfo, ContainerStats } from 'dockerode';
+import Dockerode, { ContainerInfo,  ContainerStats } from 'dockerode';
 import * as ejs from 'ejs';
-import { ContainerEnv, IContainersStatus, IContainerStatusItem, IServerList, IServerListInstance, ITemplates } from '@interfaces/watcher';
+import { IContainersStatus, IContainerStatusItem, IServerList, IServerListInstance, ITemplates } from '@interfaces/watcher';
 import { exec } from 'child_process';
 import ReadableStream = NodeJS.ReadableStream;
-import { access, constants, existsSync, mkdirSync, unlink, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, unlink, writeFileSync } from 'fs';
 import { logger } from './logging';
+import { getContainerEnv } from './util/env';
 
 // @ts-ignore
 const docker = new Dockerode({ socketPath: '/var/run/docker.sock' });
 const NGINX_CONF_DIR = '/app/conf.d';
-const ENV_PREFIX = 'VIRTUAL_';
 const templates: ITemplates = {
   upstream: {
     PATH: '/app/templates/upstream-template.ejs',
@@ -22,6 +22,11 @@ const templates: ITemplates = {
     TARGET_PATH: `${NGINX_CONF_DIR}/vhost.conf/`,
     PREFIX: 'vhost-',
   },
+  vhostCookie: { 
+    PATH: '/app/templates/vhost-cookie-routing-template.ejs',
+    TARGET_PATH: `${NGINX_CONF_DIR}/vhost.conf/`,
+    PREFIX: 'vhost-',
+  },  
   location: {
     PATH: '/app/templates/location-template.ejs',
     TARGET_PATH: `${NGINX_CONF_DIR}/location.conf/`,
@@ -79,44 +84,6 @@ const ServerListInstance = (): IServerListInstance => {
 
 const serverListState = ServerListInstance().getInstance();
 
-// 컨테이너 환경변수 파싱 함수 개선
-const getContainerEnv = (envs?: string[]): ContainerEnv => {
-  if (!envs) {
-    logger.debug('환경변수가 없습니다. 기본값 사용');
-    return { host: '', port: 80 } as ContainerEnv;
-  }
-
-  const env = _.reduce<string, ContainerEnv>(
-    envs,
-    (prev, next) => {
-      const pos = next.indexOf('=');
-      if (pos === -1) {
-        return prev; // 잘못된 형식의 환경변수는 무시
-      }
-
-      const key = next.substring(0, pos);
-      const value = next.substring(pos + 1);
-
-      if (key.startsWith(ENV_PREFIX)) {
-        const normalizedKey = key.substring(ENV_PREFIX.length).toLowerCase();
-        logger.debug(`환경변수 파싱: ${normalizedKey}=${value}`, {
-          operation: 'getContainerEnv',
-          key: normalizedKey,
-          // value: value // 필요시 값도 로깅 (민감 정보 주의)
-        });
-        return {
-          ...prev,
-          [normalizedKey]: value,
-        };
-      }
-
-      return prev;
-    },
-    { host: '', port: 80 } as ContainerEnv
-  );
-
-  return env;
-};
 
 // 컨테이너 통계 수집 함수 추가
 const collectContainerStats = async (containerId: string): Promise<ContainerStats> => {
@@ -291,6 +258,10 @@ const handleContainerStart = async (containerId: string): Promise<void> => {
             existsSync(`/etc/nginx/certs/${env.ssl || env.group_host || env.host}.key`),
       groupYn: env.group_host ? 'Y' : 'N',
       locationPath: env.location_path,
+      routingCookieName: env.cookie_name,
+      routingMap: env.routing_map,
+      defaultUpstream: env.default_upstream,
+      hostHeaderMap: env.host_header_map,      
     });
 
     logger.info(`컨테이너 ${containerId} (${serverName}) 설정 완료`);
@@ -467,6 +438,7 @@ const nginxReload = async (): Promise<void> => {
 
 // Upstream 설정 파일 생성 함수 개선
 const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
+  logger.debug(`Upstream 설정 생성 시작`, { conItem });
   if (!conItem.serverName) {
     logger.warn('serverName 없는 컨테이너 항목, Upstream 생성 건너뜀', {
       operation: 'makeUpstream',
@@ -537,54 +509,107 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
   }
 };
 
-// Vhost 설정 파일 생성 함수 개선
 const makeVhost = async (conItem: IContainerStatusItem): Promise<void> => {
+  // serverName 유효성 검사
   if (!conItem.serverName) {
-    logger.warn('serverName이 없는 컨테이너 항목을 무시합니다.');
+    logger.warn('serverName이 없는 컨테이너 항목, Vhost 생성 건너뜀', { operation: 'makeVhost', containerData: _.pick(conItem, ['host', 'port']) });
     return;
   }
+  // host 정보 유효성 검사 (group host가 아닐 경우 serverName과 동일해야 함)
+  if (!conItem.host) {
+     logger.warn('host 정보가 없는 컨테이너 항목, Vhost 생성 건너뜀', { operation: 'makeVhost', serverName: conItem.serverName });
+     return;
+  }
 
+  // 설정 파일 이름 결정 (그룹 호스트 여부에 따라)
   const configFileName = conItem.groupYn === 'Y' ? conItem.host : conItem.serverName;
+
+  // --- 템플릿 선택 로직 ---
+  let templatePath: string;
+  // 쿠키 라우팅 관련 정보가 있는지 확인 (routingCookieName과 routingMap 둘 다 필요하며, routingMap이 비어있지 않아야 함)
+  if (conItem.routingCookieName && conItem.routingMap && Object.keys(conItem.routingMap).length > 0) {
+    // vhostCookie 템플릿 정의 확인
+    if (!templates.vhostCookie || !templates.vhostCookie.PATH) {
+        logger.error(`쿠키 라우팅 템플릿(vhostCookie) 경로가 정의되지 않았습니다. 기본 템플릿을 사용합니다.`, { operation: 'makeVhost', serverName: conItem.serverName });
+        templatePath = templates.vhost.PATH; // 기본 템플릿으로 대체
+    } else {
+        templatePath = templates.vhostCookie.PATH; // 쿠키 라우팅 템플릿 경로 사용
+        logger.debug(`${configFileName}에 쿠키 라우팅 적용, 템플릿: ${templatePath}`);
+    }
+  } else {
+    templatePath = templates.vhost.PATH; // 기본 vhost 템플릿 경로 사용
+  }
+  // --- /템플릿 선택 로직 ---
+
+  // 설정 파일 경로 정의 (vhost 디렉토리 사용)
   const configPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${configFileName}.conf`;
+  // 로그 파일 경로 정의 (serverName 기준)
   const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
 
   try {
-    if (conItem.network.length > 0) {
-      logger.debug(`${configFileName}에 대한 Vhost 설정 생성 시작`);
+    // 네트워크 정보가 하나 이상 있을 때만 vhost 파일 생성 또는 업데이트
+    if (conItem.network && conItem.network.length > 0) {
+      logger.debug(`${configFileName}에 대한 Vhost 설정 생성/업데이트 시작 (템플릿: ${templatePath})`);
 
-      // EJS 템플릿 렌더링을 Promise로 변환
+      // EJS 템플릿 렌더링 (선택된 templatePath 사용)
       const rendered = await new Promise<string>((resolve, reject) => {
-        ejs.renderFile(templates.vhost.PATH, conItem, {}, (err, str) => {
-          if (err) reject(err);
-          else resolve(str);
+        ejs.renderFile(templatePath, conItem, {}, (err, str) => {
+          if (err) {
+            logger.error(`EJS 템플릿 렌더링 실패: ${templatePath}`, { error: err });
+            reject(err); // 오류 발생 시 reject
+          } else {
+            resolve(str); // 성공 시 resolve
+          }
         });
       });
 
-      // 설정 파일 작성
-      writeFileSync(configPath, rendered);
-      logger.info(`${configPath} 설정 파일 생성 완료`);
+      // 설정 파일 작성 (오류 처리 추가)
+      try {
+        writeFileSync(configPath, rendered);
+        logger.nginxConfig('생성/업데이트', configPath, { serverName: conItem.serverName, type: 'vhost', template: templatePath });
+      } catch (writeError: any) {
+         logger.error(`Vhost 설정 파일 쓰기 실패: ${configPath}`, { error: writeError.message });
+         // 파일 쓰기 실패 시 Nginx 리로드 방지 등 추가 처리 고려
+         return; // Vhost 생성 실패 시 종료
+      }
+
     } else {
-      // 네트워크가 없으면 설정 파일 제거
+      // 네트워크 정보가 없으면 기존 vhost 파일 제거
       if (existsSync(configPath)) {
-        unlink(configPath, (err) => {
+        logger.info(`네트워크 정보 없음, Vhost 설정 파일 제거 시도`, { operation: 'makeVhost_delete', serverName: conItem.serverName, configPath });
+        unlink(configPath, (err) => { // 비동기 삭제, 콜백에서 로깅
           if (err) {
-            logger.error(`${configPath} 삭제 실패: ${err.message}`);
+            logger.error(`Vhost 설정 파일 삭제 실패`, { operation: 'makeVhost_delete_error', serverName: conItem.serverName, configPath, error: err.message });
           } else {
-            logger.info(`${configPath} 삭제 완료`);
+            logger.nginxConfig('삭제', configPath, { serverName: conItem.serverName, type: 'vhost', reason: 'No network' });
+            // 파일 삭제 후 Nginx 리로드가 필요할 수 있음 (makeFiles 함수에서 처리)
           }
         });
       } else {
-        logger.debug(`${configPath} 파일이 존재하지 않아 삭제를 건너뜁니다.`);
+        logger.debug(`Vhost 설정 파일 없음, 삭제 건너뜀`, { operation: 'makeVhost_noop_delete', serverName: conItem.serverName, configPath });
       }
     }
 
-    // Nginx 로그 디렉토리 생성
-    if (!existsSync(nginxLogPath)) {
-      mkdirSync(nginxLogPath, { recursive: true });
-      logger.debug(`${nginxLogPath} 로그 디렉토리 생성 완료`);
+    // Nginx 로그 디렉토리 생성 (항상 시도, 오류는 경고로 처리)
+    try {
+      if (!existsSync(nginxLogPath)) {
+          mkdirSync(nginxLogPath, { recursive: true });
+          logger.debug(`Nginx 로그 디렉토리 생성`, { operation: 'makeVhost_logdir', path: nginxLogPath });
+      }
+    } catch(mkdirError: any) {
+        logger.warn(`Nginx 로그 디렉토리 생성 실패 (무시 가능): ${nginxLogPath}`, { error: mkdirError.message });
     }
-  } catch (error) {
-    logger.error(`Vhost 설정 파일 생성 중 오류: ${error}`);
+
+  } catch (error: any) {
+    // EJS 렌더링 오류 또는 기타 예상치 못한 오류 처리
+    logger.error(`Vhost 설정 처리 중 오류 발생`, {
+      operation: 'makeVhost_error',
+      serverName: conItem.serverName,
+      configPath,
+      template: templatePath, // 사용된 템플릿 정보 로깅
+      error: error.message,
+      stack: error.stack,
+    });
   }
 };
 
