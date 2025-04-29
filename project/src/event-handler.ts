@@ -12,6 +12,7 @@ import {
 } from "./util";
 import { docker, LOCATION_POSTFIX } from "./config";
 import { serverListState } from "./state";
+import { getContainerIP } from "./util/container";
 
 export const dockerEventHandler =
   (eventType: string) => async (err: any, stream?: ReadableStream) => {
@@ -35,7 +36,6 @@ export const dockerEventHandler =
       try {
         data = JSON.parse(chunk.toString());
 
-        // 커스텀 로거 메서드 사용
         logger.dockerEvent(eventType, data.id, {
           action: data.Action, // Docker 이벤트의 Action 필드
           actorId: data.actor?.ID,
@@ -95,7 +95,7 @@ const handleContainerStart = async (containerId: string): Promise<void> => {
     const info = await container.inspect();
 
     const env = getContainerEnv(info?.Config.Env);
-    const ip = info?.NetworkSettings.IPAddress;
+    const ip = getContainerIP(info);
 
     if (!env.host) {
       logger.debug(
