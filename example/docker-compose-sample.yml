@@ -148,6 +148,8 @@ services:
       - VIRTUAL_COOKIE_NAME=service_type
       - VIRTUAL_ROUTING_MAP=1:hospital.internal,2:pharmacy.internal
       - VIRTUAL_DEFAULT_UPSTREAM=pharmacy.internal
+      # 호스트 헤더 매핑 추가
+      - VIRTUAL_HOST_HEADER_MAP=hospital.internal:app-cookie-hospital,pharmacy.internal:app-cookie-pharmacy
     networks:
       - test-network
     depends_on:
@@ -306,7 +308,7 @@ services:
       - VIRTUAL_PORT=8095
       - PORT=8095
       - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.local:/path5
+      - VIRTUAL_LOCATION=multipath.test.localpath5
       - APP_NAME=Path5 Service
     restart: always
     networks:
