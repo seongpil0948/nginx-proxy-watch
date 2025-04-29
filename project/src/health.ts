@@ -1,10 +1,10 @@
 import { docker } from "./config";
-import { logger } from "./util/logging";
 import {
   collectContainerStats,
   calculateCpuUsage,
   calculateMemoryUsage,
-} from "./util/stat";
+  logger,
+} from "./util";
 
 // 컨테이너 헬스체크 함수 추가
 const containerHealthCheck = async (): Promise<void> => {

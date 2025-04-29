@@ -1,6 +1,6 @@
 import _ from "lodash";
 import { ContainerInfo } from "dockerode";
-import { logger } from "./util/logging";
+import { logger } from "./util";
 
 import { docker, MONITORED_EVENTS } from "./config";
 import { scheduleHealthCheck } from "./health";

@@ -1,5 +1,5 @@
 import { ContainerStats } from "dockerode";
-import { docker } from "src/config";
+import { docker } from "../config";
 import { logger } from "./logging";
 
 // CPU 사용량 계산 함수

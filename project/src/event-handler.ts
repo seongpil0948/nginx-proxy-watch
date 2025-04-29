@@ -1,17 +1,17 @@
 import _ from "lodash";
 import ReadableStream = NodeJS.ReadableStream;
 import { existsSync } from "fs";
-import { logger } from "./util/logging";
-import { getContainerEnv } from "./util/env";
 import {
+  logger,
+  getContainerEnv,
   calculateCpuUsage,
   calculateMemoryUsage,
   collectContainerStats,
-} from "./util/stat";
-import { formatBytes } from "./util/format";
+  formatBytes,
+  makeFiles,
+} from "./util";
 import { docker, LOCATION_POSTFIX } from "./config";
 import { serverListState } from "./state";
-import { makeFiles } from "./util/make";
 
 export const dockerEventHandler =
   (eventType: string) => async (err: any, stream?: ReadableStream) => {

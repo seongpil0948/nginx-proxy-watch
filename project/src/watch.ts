@@ -1,10 +1,8 @@
 import { ContainerInfo } from "dockerode";
 import { existsSync } from "fs";
 import { docker, LOCATION_POSTFIX } from "./config";
-import { makeFiles } from "./util/make";
+import { makeFiles, getContainerEnv, logger } from "./util";
 import { serverListState } from "./state";
-import { getContainerEnv } from "./util/env";
-import { logger } from "./util/logging";
 
 // 초기 컨테이너 감시 설정 함수
 export const initWatch = async (

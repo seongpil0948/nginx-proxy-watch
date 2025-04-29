@@ -4,7 +4,7 @@ import {
   IContainersStatus,
   IContainerStatusItem,
 } from "@interfaces/watcher";
-import { logger } from "./util/logging";
+import { logger } from "./util";
 import _ from "lodash";
 
 // 컨테이너 상태를 저장하는 싱글톤 인스턴스
