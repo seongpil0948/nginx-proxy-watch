@@ -1,5 +1,4 @@
-# example/app-main/Dockerfile
-FROM node:16-alpine
+FROM node:23.11.0-slim
 WORKDIR /usr/src/app
 COPY ./app-common/server.js ./app-common/server.js
 COPY ./app-main/server.js ./server.js

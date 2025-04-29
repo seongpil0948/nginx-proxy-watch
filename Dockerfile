@@ -1,4 +1,4 @@
-FROM nginx
+FROM nginx:stable-otel
 
 LABEL category="nginx"
 USER    0
@@ -24,7 +24,7 @@ COPY    dhparam/dhparam.pem /etc/nginx/dhparam/
 
 RUN apt-get update && \
         apt-get install -y curl wget unzip logrotate && \
-        curl -fsSL https://deb.nodesource.com/setup_16.x | bash - && \
+        curl -fsSL https://deb.nodesource.com/setup_23.x | bash - && \
         apt-get install -y nodejs && \
         apt-get clean
 
