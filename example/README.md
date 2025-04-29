@@ -5,10 +5,8 @@
 ## 지원하는 라우팅 시나리오
 
 - **기본 Vhost 라우팅**: 특정 호스트 이름으로 들어오는 요청을 지정된 컨테이너로 라우팅
-- **Location 기반 라우팅**: 특정 호스트의 특정 경로(/api, /admin 등)로 들어오는 요청을 다른 컨테이너로 라우팅
-- **Group Host 라우팅**: 여러 서비스를 하나의 그룹 호스트 아래 경로로 묶어 관리
+- **Group Host 라우팅**: 여러 서비스를 하나의 그룹 호스트 아래 경로로 묶어 관리 (권장 방식)
 - **쿠키 기반 라우팅**: 특정 쿠키 값에 따라 요청을 다른 컨테이너로 동적 라우팅
-- **다중 경로 라우팅**: 단일 호스트에서 여러 경로를 각각 다른 컨테이너로 라우팅
 - **로드 밸런싱**: 동일 서비스의 여러 인스턴스 간 요청 분산
 
 ## 환경변수 가이드
@@ -20,14 +18,7 @@
 | `VIRTUAL_HOST` | 서비스할 도메인 이름 (필수) | - |
 | `VIRTUAL_PORT` | 컨테이너 내부 서비스 포트 | 80 |
 
-### Location 기반 라우팅 환경변수
-
-| 환경변수 | 설명 | 예시 |
-|---------|------|------|
-| `VIRTUAL_IS_LOCATION` | 호스트 내 특정 경로 처리 여부 | `Y` |
-| `VIRTUAL_LOCATION` | 처리할 호스트와 경로 조합 | `host.com:/api,host.com:/admin` |
-
-### Group Host 관련 환경변수
+### Group Host 관련 환경변수 (권장 방식)
 
 | 환경변수 | 설명 | 예시 |
 |---------|------|------|
@@ -55,7 +46,7 @@
 ```
 example/
 ├── app-common/              # 모든 테스트 앱이 공유하는 코드
-├── app-main/                # 기본 Vhost 테스트
+├── app-main/                # 기본 Vhost 테스트 (/main)
 ├── app-api/                 # API 경로 라우팅 테스트 (/api)
 ├── app-admin/               # 관리자 경로 라우팅 테스트 (/admin)
 ├── app-group-service-a/     # Group Host 테스트 (serviceA)
@@ -80,36 +71,27 @@ environment:
   - VIRTUAL_PORT=8080
 ```
 
-### 2. Location 기반 라우팅
+### 2. Group Host 라우팅 (권장 방식)
 ```yaml
 environment:
-  - VIRTUAL_HOST=example.com
+  - VIRTUAL_GROUP_HOST=example.com
+  - VIRTUAL_HOST=api-internal
   - VIRTUAL_PORT=8081
-  - VIRTUAL_IS_LOCATION=Y
-  - VIRTUAL_LOCATION=example.com:/api
+  - VIRTUAL_LOCATION_PATH=api
 ```
 
-### 3. Group Host 라우팅
-```yaml
-environment:
-  - VIRTUAL_GROUP_HOST=group.example.com
-  - VIRTUAL_HOST=service-internal
-  - VIRTUAL_PORT=8083
-  - VIRTUAL_LOCATION_PATH=serviceA
-```
-
-### 4. 쿠키 기반 라우팅
+### 3. 쿠키 기반 라우팅
 ```yaml
 environment:
   - VIRTUAL_HOST=cookie.example.com
   - VIRTUAL_PORT=80
-  - VIRTUAL_COOKIE_NAME=service_type
+  - VIRTUAL_COOKIE_NAME=mall_type
   - VIRTUAL_ROUTING_MAP=1:service-a,2:service-b
   - VIRTUAL_DEFAULT_UPSTREAM=service-b
   - VIRTUAL_HOST_HEADER_MAP=service-a:service-a.internal,service-b:service-b.internal
 ```
 
-### 5. 보안 연결(HTTPS)
+### 4. 보안 연결(HTTPS)
 ```yaml
 environment:
   - VIRTUAL_HOST=secure.example.com
@@ -117,6 +99,30 @@ environment:
   - VIRTUAL_SSL=secure.example.com
   - VIRTUAL_CERT=pem  # 또는 crt
 ```
+
+## hosts 파일 설정 방법
+
+로컬 환경에서 테스트하려면 hosts 파일에 테스트 도메인을 추가해야 합니다:
+
+### Windows의 경우:
+1. 관리자 권한으로 메모장 실행
+2. 파일 열기: `C:\Windows\System32\drivers\etc\hosts`
+3. 다음 줄 추가:
+```
+127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
+```
+4. 저장 후 닫기
+
+### macOS/Linux의 경우:
+1. 터미널에서 다음 명령 실행:
+```bash
+sudo nano /etc/hosts
+```
+2. 다음 줄 추가:
+```
+127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
+```
+3. Ctrl+O로 저장 후 Ctrl+X로 나가기
 
 ## 환경 실행 방법
 
@@ -132,12 +138,7 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -out ./nginx-proxy/local_certs/secure.test.local_crt.pem
 ```
 
-3. 호스트 파일 설정 (/etc/hosts 또는 C:\Windows\System32\drivers\etc\hosts):
-```
-127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
-```
-
-4. 제공된 스크립트로 환경 실행:
+3. 제공된 스크립트로 환경 실행:
 ```bash
 ./scripts/ignite-example.sh
 ```
@@ -146,15 +147,15 @@ openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 docker compose -f example/docker-compose-sample.yml up -d --build
 ```
 
-5. 브라우저에서 테스트:
+4. 브라우저에서 테스트:
    - 기본 Vhost: http://main.test.local
-   - API 경로: http://main.test.local/api
-   - 관리자 경로: http://main.test.local/admin
+   - 그룹 호스트 API: http://main.test.local/api
+   - 그룹 호스트 Admin: http://main.test.local/admin
    - 그룹 서비스: http://group.test.local/serviceA 및 http://group.test.local/serviceB
-   - 쿠키 라우팅: http://cookie.test.local (쿠키 service_type=1 또는 service_type=2 설정)
+   - 쿠키 라우팅: http://cookie.test.local (쿠키 mall_type=1 또는 mall_type=2 설정)
    - 보안 연결: https://secure.test.local
    - 로드 밸런싱: http://balance.test.local (여러 번 새로고침)
-   - 다중 경로: http://multipath.test.local, http://multipath.test.local/path1, .../path5
+   - 다중 경로: http://multipath.test.local/path1, /path2, .../path5
 
 ## 문제 해결
 

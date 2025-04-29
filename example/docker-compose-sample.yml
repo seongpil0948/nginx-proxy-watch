@@ -28,42 +28,43 @@ services:
       - VIRTUAL_HOST=main.test.local
       - VIRTUAL_PORT=8080
       - PORT=8080
+      - VIRTUAL_LOCATION_PATH=main
     restart: always
     networks:
       - test-network
     depends_on:
       - nginx-proxy
 
-  # 2. Location 기반 라우팅 테스트 (/api 경로)
+  # 2. Group Host 라우팅 테스트 (API 서비스)
   app-api:
     build:
       context: .
       dockerfile: ./app-api/Dockerfile
     container_name: app-api-test
     environment:
-      - VIRTUAL_HOST=main.test.local
+      - VIRTUAL_GROUP_HOST=main.test.local
+      - VIRTUAL_HOST=api.internal
       - VIRTUAL_PORT=8081
       - PORT=8081
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=main.test.local:/api
+      - VIRTUAL_LOCATION_PATH=api
     restart: always
     networks:
       - test-network
     depends_on:
       - nginx-proxy
 
-  # 3. 다중 Location 테스트 (/admin 경로)
+  # 3. Group Host 라우팅 테스트 (Admin 서비스)
   app-admin:
     build:
       context: .
       dockerfile: ./app-admin/Dockerfile
     container_name: app-admin-test
     environment:
-      - VIRTUAL_HOST=main.test.local
+      - VIRTUAL_GROUP_HOST=main.test.local
+      - VIRTUAL_HOST=admin.internal
       - VIRTUAL_PORT=8082
       - PORT=8082
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=main.test.local:/admin
+      - VIRTUAL_LOCATION_PATH=admin
     restart: always
     networks:
       - test-network
@@ -145,7 +146,7 @@ services:
     environment:
       - VIRTUAL_HOST=cookie.test.local
       - VIRTUAL_PORT=80
-      - VIRTUAL_COOKIE_NAME=service_type
+      - VIRTUAL_COOKIE_NAME=mall_type
       - VIRTUAL_ROUTING_MAP=1:hospital.internal,2:pharmacy.internal
       - VIRTUAL_DEFAULT_UPSTREAM=pharmacy.internal
       # 호스트 헤더 매핑 추가
@@ -208,7 +209,7 @@ services:
     depends_on:
       - nginx-proxy
 
-  # 12. 다중 경로 루트 서비스
+  # 12. 다중 경로 루트 서비스 (GroupHost로 변경)
   app-multipath-root:
     build:
       context: .
@@ -225,18 +226,18 @@ services:
     depends_on:
       - nginx-proxy
 
-  # 13-17. 동일 호스트 내 5개 경로 테스트
+  # 13-17. 다중 경로를 GroupHost로 변경
   app-path1:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
     container_name: app-path1
     environment:
-      - VIRTUAL_HOST=multipath.test.local
+      - VIRTUAL_GROUP_HOST=multipath.test.local
+      - VIRTUAL_HOST=path1.internal
       - VIRTUAL_PORT=8091
       - PORT=8091
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.local:/path1
+      - VIRTUAL_LOCATION_PATH=path1
       - APP_NAME=Path1 Service
     restart: always
     networks:
@@ -250,11 +251,11 @@ services:
       dockerfile: ./app-multipath/Dockerfile
     container_name: app-path2
     environment:
-      - VIRTUAL_HOST=multipath.test.local
+      - VIRTUAL_GROUP_HOST=multipath.test.local
+      - VIRTUAL_HOST=path2.internal
       - VIRTUAL_PORT=8092
       - PORT=8092
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.local:/path2
+      - VIRTUAL_LOCATION_PATH=path2
       - APP_NAME=Path2 Service
     restart: always
     networks:
@@ -268,11 +269,11 @@ services:
       dockerfile: ./app-multipath/Dockerfile
     container_name: app-path3
     environment:
-      - VIRTUAL_HOST=multipath.test.local
+      - VIRTUAL_GROUP_HOST=multipath.test.local
+      - VIRTUAL_HOST=path3.internal
       - VIRTUAL_PORT=8093
       - PORT=8093
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.local:/path3
+      - VIRTUAL_LOCATION_PATH=path3
       - APP_NAME=Path3 Service
     restart: always
     networks:
@@ -286,11 +287,11 @@ services:
       dockerfile: ./app-multipath/Dockerfile
     container_name: app-path4
     environment:
-      - VIRTUAL_HOST=multipath.test.local
+      - VIRTUAL_GROUP_HOST=multipath.test.local
+      - VIRTUAL_HOST=path4.internal
       - VIRTUAL_PORT=8094
       - PORT=8094
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.local:/path4
+      - VIRTUAL_LOCATION_PATH=path4
       - APP_NAME=Path4 Service
     restart: always
     networks:
@@ -304,11 +305,11 @@ services:
       dockerfile: ./app-multipath/Dockerfile
     container_name: app-path5
     environment:
-      - VIRTUAL_HOST=multipath.test.local
+      - VIRTUAL_GROUP_HOST=multipath.test.local
+      - VIRTUAL_HOST=path5.internal
       - VIRTUAL_PORT=8095
       - PORT=8095
-      - VIRTUAL_IS_LOCATION=Y
-      - VIRTUAL_LOCATION=multipath.test.localpath5
+      - VIRTUAL_LOCATION_PATH=path5
       - APP_NAME=Path5 Service
     restart: always
     networks:
