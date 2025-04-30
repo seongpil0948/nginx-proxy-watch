@@ -25,7 +25,6 @@ interface ExtendedLogger extends winston.Logger {
     details?: Record<string, any>
   ) => void;
 }
-
 // 로그 포맷 정의 - Winston의 TransformableInfo 타입 사용
 const logFormat = winston.format.printf((info: ExtendedTransformableInfo) => {
   const { level, message, timestamp, ...metadata } = info;
@@ -40,14 +39,11 @@ const logFormat = winston.format.printf((info: ExtendedTransformableInfo) => {
     metaStr = ` | ${JSON.stringify(metadata)}`;
   }
 
-  // [시간] [로그레벨] 메시지 형식 - OpenTelemetry regex_parser와 호환
+  // ISO 8601 형식 사용으로 타임존 표시 (Z는 UTC 표시)
   return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
 });
 
-// 로그 저장 경로 설정 - OpenTelemetry 경로와 일치시킴
 const LOG_DIR = "/var/log/nginx-proxy-watch";
-
-// 로그 파일 설정
 const logConfiguration = {
   maxsize: 10 * 1024 * 1024, // 10MB
   maxFiles: 14, // 14일 보관
@@ -55,7 +51,9 @@ const logConfiguration = {
   zippedArchive: true, // 로그 압축 보관
   format: winston.format.combine(
     winston.format.errors({ stack: true }),
-    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }),
+    winston.format.timestamp({
+      format: "YYYY-MM-DD HH:mm:ss.SSSZ", // 타임존 포함 포맷 (Z는 +/-HH:MM 형식으로 표시됨)
+    }),
     logFormat
   ),
 };
@@ -75,7 +73,6 @@ const baseLogger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize({ all: true }),
-        winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss.SSS" }),
         logFormat
       ),
     }),
@@ -114,7 +111,6 @@ logger.dockerEvent = (
     operation: "docker_event", // 작업 종류 명시
     eventType,
     containerId,
-    timestamp: new Date().toISOString(), // 타임스탬프는 winston이 자동으로 추가하지만, 명시해도 좋음
     ...details, // 추가 정보 포함
   });
 };
@@ -129,7 +125,6 @@ logger.containerState = (
     operation: "container_state_change", // 작업 종류 명시
     containerId,
     state,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
@@ -144,7 +139,6 @@ logger.nginxConfig = (
     operation: "nginx_config", // 작업 종류 명시
     action, // '생성', '삭제', '재로드 시도', '재로드 성공', '재로드 실패' 등
     configPath,
-    timestamp: new Date().toISOString(),
     ...details,
   });
 };
