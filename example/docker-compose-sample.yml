@@ -1,4 +1,26 @@
 services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0-386
+    restart: always
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    mem_limit: "2g"
+    memswap_limit: "2g"
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./otel/signal-data:/tmp/signal-data:rw,z
+      - ./nginx-proxy/local_certs:/etc/nginx/certs:ro
+      - ./nginx-proxy/local_logs/nginx:/var/log/nginx:ro
+      - ./nginx-proxy/local_logs/watcher:/var/log/docker-event-watcher:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "13133:13133" # health_check extension(http://10.101.91.145:13133/healthz)
+      - "1777:1777" # pprof extension (http://10.101.91.145:1777/debug/pprof)
+      - "55679:55679" # zpages extension(http://10.101.91.145:55679/debug/servicez)
+      - "9093:9090"
+    networks:
+      - test-network
   nginx-proxy:
     build: ../
     container_name: nginx-proxy-test
@@ -7,8 +29,8 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./nginx-proxy/local_certs:/etc/nginx/certs:ro 
-      - ./nginx-proxy/local_logs/nginx:/var/log/nginx 
+      - ./nginx-proxy/local_certs:/etc/nginx/certs:ro
+      - ./nginx-proxy/local_logs/nginx:/var/log/nginx
       - ./nginx-proxy/local_logs/watcher:/var/log/docker-event-watcher
     environment:
       - LOG_LEVEL=debug # 상세 로그 확인용
@@ -70,7 +92,7 @@ services:
       - test-network
     depends_on:
       - nginx-proxy
-      
+
   # 4. Group Host 및 Location Path 테스트
   app-group-service-a:
     build:

@@ -1,0 +1,210 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+  # Docker Event Watcher 로그 수집 설정
+  filelog/watcher:
+    include:
+      - /var/log/docker-event-watcher/*.log
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    max_log_size: 100MB
+    poll_interval: 1s
+    operators:
+      - type: regex_parser
+        regex: '^\[(?P<time>[^\]]+)\] \[(?P<level>[A-Z]+)\] (?P<message>.*)(?: \| (?P<metadata>\{.*\}))?$'
+        time_parser:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02 15:04:05.000Z"
+          location: Asia/Seoul
+        severity:
+          parse_from: attributes.level
+          mapping:
+            INFO: INFO
+            ERROR: ERROR
+            DEBUG: DEBUG
+            WARN: WARN
+  filelog/nginx/access:
+    include:
+      - /var/log/nginx/**/access*.log
+      - /var/log/nginx/access*.log
+    exclude:
+      - /**/*.gz
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    max_log_size: 100MB
+    poll_interval: 1s
+    max_concurrent_files: 30
+    operators:
+      - type: regex_parser
+        id: access_log_parser
+        regex: '^remote_addr=(?P<remote_addr>[^ ]+) remote_user="(?P<remote_user>[^"]*)" time_local="(?P<time_local>[^"]*)" request="(?P<request>[^"]*)" status=(?P<status>\d+) body_bytes_sent=(?P<body_bytes_sent>\d+) referer="(?P<referer>[^"]*)" user_agent="(?P<user_agent>[^"]*)" x_forwarded_for="(?P<x_forwarded_for>[^"]*)" request_time=(?P<request_time>[^ ]+) upstream_response_time=(?P<upstream_response_time>[^ ]+)( trace_id=(?P<trace_id>[a-f0-9]+) span_id=(?P<span_id>[a-f0-9]+))?'
+        time_parser:
+          parse_from: attributes.time_local
+          layout_type: strptime
+          layout: "%d/%b/%Y:%H:%M:%S %z"
+      
+      # HTTP 메서드 및 경로 추출
+      - type: regex_parser
+        id: extract_http_parts
+        regex: '^(?P<method>[A-Z]+) (?P<path>[^ ]+) .*$'
+        parse_from: attributes.request
+
+  filelog/nginx/error:
+    include:
+      - /var/log/nginx/**/error*.log
+      - /var/log/nginx/error*.log
+    exclude:
+      - /**/*.gz
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    max_concurrent_files: 30
+    operators:
+      - type: regex_parser
+        regex: '^(?P<time>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}) \[(?P<level>[^\]]*)\] (?P<pid>\d+)#(?P<tid>\d+): (?P<message>.*)$'
+        time_parser:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006/01/02 15:04:05"
+          location: Asia/Seoul
+          timezone: "+0900"
+        severity:
+          parse_from: attributes.level
+          mapping:
+            error: ERROR
+            warn: WARN
+            notice: INFO
+            info: INFO
+            debug: DEBUG
+
+processors:
+  batch:
+    timeout: 500ms
+    send_batch_size: 2000
+
+  transform/nginx_access:
+    log_statements:
+      - context: log
+        statements:
+          # 상태 코드에 따라 severity 설정
+          - set(attributes["severity.number"], "17") where attributes["status"] >= "500"
+          - set(attributes["severity.number"], "13") where attributes["status"] >= "400" and attributes["status"] < "500"
+          - set(attributes["severity.number"], "9") where attributes["status"] < "400"
+
+          - set(attributes["severity.text"], "ERROR") where attributes["status"] >= "500"
+          - set(attributes["severity.text"], "WARN") where attributes["status"] >= "400" and attributes["status"] < "500"
+          - set(attributes["severity.text"], "INFO") where attributes["status"] < "400"
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 4000
+    spike_limit_mib: 1000
+
+  resource/watcher:
+    attributes:
+      - key: service.name
+        value: docker-event-watcher
+        action: upsert
+      - key: env
+        value: prod
+        action: upsert
+
+  resource/nginx:
+    attributes:
+      - key: service.name
+        value: nginx_proxy_watch
+        action: upsert
+      - key: env
+        value: prod
+        action: upsert
+
+  # Nginx Access 로그에 대한 속성 추가
+  attributes/nginx_access:
+    actions:
+      - key: http.status_code
+        from_attribute: status
+        action: insert
+      - key: http.method
+        from_attribute: method
+        action: insert
+      - key: log.type
+        value: "nginx.access"
+        action: insert
+
+  # Nginx Error 로그에 대한 속성 추가
+  attributes/nginx_error:
+    actions:
+      - key: process.pid
+        from_attribute: "pid"
+        action: insert
+      - key: thread.id
+        from_attribute: tid
+        action: insert
+      - key: log.type
+        value: "nginx.error"
+        action: insert
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # 파일 경로를 Docker Compose 볼륨 매핑에 맞게 수정
+  file/logs/watcher:
+    path: "/tmp/signal-data/logs/watcher.json"
+    rotation:
+      max_megabytes: 10
+      max_days: 14
+      max_backups: 30
+      localtime: true
+
+  file/logs/nginx:
+    path: "/tmp/signal-data/logs/nginx.json"
+    rotation:
+      max_megabytes: 10
+      max_days: 14
+      max_backups: 30
+      localtime: true
+
+service:
+  pipelines:
+    logs/watcher:
+      receivers: [filelog/watcher]
+      processors: [memory_limiter, batch, resource/watcher]
+      exporters: [file/logs/watcher]
+
+    logs/nginx/access:
+      receivers: [filelog/nginx/access]
+      processors:
+        [
+          memory_limiter,
+          resource/nginx,
+          transform/nginx_access,
+          attributes/nginx_access,
+          batch,
+        ]
+      exporters: [file/logs/nginx, debug]
+
+    logs/nginx/error:
+      receivers: [filelog/nginx/error]
+      processors:
+        [
+          memory_limiter,
+          resource/nginx,
+          transform/nginx_access,
+          attributes/nginx_error,
+          batch,
+        ]
+      exporters: [file/logs/nginx, debug]
+
+  telemetry:
+    metrics:
+      level: basic
+    logs:
+      level: warn

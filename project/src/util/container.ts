@@ -17,7 +17,8 @@ export const getContainerIP = (info: ContainerInspectInfo): string => {
 
   // 3. 대체 IP로 로컬호스트 반환 (긴급 폴백)
   logger.warn(
-    `컨테이너 ${info.Name}::${info.Image}::${info.Id}의 IP 주소를 찾을 수 없습니다. 로컬호스트로 대체합니다.`
+    `컨테이너 ${info.Name}::${info.Image}::${info.Id}의 IP 주소를 찾을 수 없습니다. 로컬호스트로 대체합니다.`,
+    JSON.stringify(info, null, 2)
   );
   return "127.0.0.1";
 };

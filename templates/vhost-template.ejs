@@ -85,7 +85,7 @@ server {
 
         proxy_pass http://<%= serverName %>;
         charset  UTF-8;
-        access_log  /var/log/nginx/<%= serverName %>/access-was.log timed_combined;
+        access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
         error_log   /var/log/nginx/<%= serverName %>/error-was.log;
     }
     <% }%>

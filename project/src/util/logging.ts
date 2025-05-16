@@ -25,37 +25,43 @@ interface ExtendedLogger extends winston.Logger {
     details?: Record<string, any>
   ) => void;
 }
-// 로그 포맷 정의 - Winston의 TransformableInfo 타입 사용
-const logFormat = winston.format.printf((info: ExtendedTransformableInfo) => {
-  const { level, message, timestamp, ...metadata } = info;
-  let metaStr = "";
 
-  // 에러 스택 처리
-  if (metadata.stack) {
-    metaStr = `\n${metadata.stack}`;
-  }
-  // 일반 메타데이터 처리 - JSON 형식으로 추가
-  else if (Object.keys(metadata).length > 0 && metadata.message === undefined) {
-    metaStr = ` | ${JSON.stringify(metadata)}`;
-  }
+const plainTextFormat = winston.format.printf(
+  (info: ExtendedTransformableInfo) => {
+    const { level, message, timestamp, ...metadata } = info;
+    let metaStr = "";
 
-  // ISO 8601 형식 사용으로 타임존 표시 (Z는 UTC 표시)
-  return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
-});
+    // 메타데이터가 있고 message 속성이 없는 경우에만 JSON 추가
+    if (
+      Object.keys(metadata).length > 0 &&
+      metadata.message === undefined &&
+      metadata.service !== undefined
+    ) {
+      metaStr = ` | ${JSON.stringify(metadata)}`;
+    }
+
+    // 순수 텍스트 형식
+    return `[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`;
+  }
+);
+
+// 통합 순수 텍스트 포맷
+const cleanFormat = winston.format.combine(
+  winston.format.errors({ stack: true }),
+  winston.format.timestamp({
+    format: "YYYY-MM-DD HH:mm:ss.SSSZ",
+  }),
+  // 명시적으로 colorize 비활성화 (winston.format.uncolorize()는 사용하지 않음)
+  plainTextFormat
+);
 
 const LOG_DIR = "/var/log/nginx-proxy-watch";
-const logConfiguration = {
+const logBaseConfig = {
   maxsize: 10 * 1024 * 1024, // 10MB
   maxFiles: 14, // 14일 보관
   tailable: true, // 로그 파일 로테이션 활성화
   zippedArchive: true, // 로그 압축 보관
-  format: winston.format.combine(
-    winston.format.errors({ stack: true }),
-    winston.format.timestamp({
-      format: "YYYY-MM-DD HH:mm:ss.SSSZ", // 타임존 포함 포맷 (Z는 +/-HH:MM 형식으로 표시됨)
-    }),
-    logFormat
-  ),
+  format: cleanFormat,
 };
 
 // 로그 디렉토리 생성
@@ -63,35 +69,31 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
-// 기본 로거 생성
+// 기본 로거 생성 - 모든 출력에 순수 텍스트 포맷 사용
 const baseLogger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   defaultMeta: { service: "docker-event-watcher" },
   exitOnError: false,
+  format: cleanFormat, // 전역적으로 기본 포맷 설정
   transports: [
-    // 콘솔 출력
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize({ all: true }),
-        logFormat
-      ),
-    }),
+    // 콘솔 출력 - 색상 없는 순수 텍스트
+    new winston.transports.Console(),
 
     // 모든 로그를 단일 파일에 저장 (OpenTelemetry 수집기용)
     new winston.transports.File({
-      ...logConfiguration,
+      ...logBaseConfig,
       filename: `${LOG_DIR}/watcher.log`,
     }),
 
     // 각 레벨별 로그 파일
     new winston.transports.File({
-      ...logConfiguration,
+      ...logBaseConfig,
       filename: `${LOG_DIR}/error.log`,
       level: "error",
     }),
 
     new winston.transports.File({
-      ...logConfiguration,
+      ...logBaseConfig,
       filename: `${LOG_DIR}/debug.log`,
       level: "debug",
     }),
@@ -108,10 +110,10 @@ logger.dockerEvent = (
   details: Record<string, any> = {}
 ) => {
   logger.info(`Docker 이벤트 감지: ${eventType}`, {
-    operation: "docker_event", // 작업 종류 명시
+    operation: "docker_event",
     eventType,
     containerId,
-    ...details, // 추가 정보 포함
+    ...details,
   });
 };
 
@@ -122,7 +124,7 @@ logger.containerState = (
   details: Record<string, any> = {}
 ) => {
   logger.info(`컨테이너 상태 변경: ${state}`, {
-    operation: "container_state_change", // 작업 종류 명시
+    operation: "container_state_change",
     containerId,
     state,
     ...details,
@@ -136,19 +138,18 @@ logger.nginxConfig = (
   details: Record<string, any> = {}
 ) => {
   logger.info(`Nginx 설정 ${action}`, {
-    operation: "nginx_config", // 작업 종류 명시
-    action, // '생성', '삭제', '재로드 시도', '재로드 성공', '재로드 실패' 등
+    operation: "nginx_config",
+    action,
     configPath,
     ...details,
   });
 };
 
-// 프로세스 종료 시 로깅
+// 프로세스 이벤트 핸들러
 process.on("exit", () => {
   logger.info("Docker 모니터링 서비스 종료");
 });
 
-// 예상치 못한 예외 로깅
 process.on("uncaughtException", (error: Error) => {
   logger.error("처리되지 않은 예외 발생", {
     error: error.message,
@@ -156,7 +157,6 @@ process.on("uncaughtException", (error: Error) => {
   });
 });
 
-// 거부된 Promise 로깅
 process.on("unhandledRejection", (reason: any) => {
   logger.error("처리되지 않은 Promise 거부", { reason });
 });
