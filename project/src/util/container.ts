@@ -2,71 +2,76 @@ import { ContainerInspectInfo } from "dockerode";
 import { logger } from "./logging";
 
 /**
- * 컨테이너의 IP 주소를 반환하는 함수
- * 여러 네트워크 소스를 시도하고 유효한 IP를 반환함
+ * Get valid IP address from NetworkSettings with regex validation
  */
-export const getContainerIP = (info: ContainerInspectInfo): string => {
-  console.info("getContainerIP", info);
-  // 1. 기본 IP 주소 확인 (이전 버전 호환성)
-  if (
-    info?.NetworkSettings?.IPAddress &&
-    info.NetworkSettings.IPAddress.trim() !== ""
-  ) {
-    logger.debug(
-      `컨테이너 IP 주소를 기본 NetworkSettings에서 찾음: ${info.NetworkSettings.IPAddress}`,
-      {
-        containerId: info.Id,
-        containerName: info.Name,
-      }
-    );
-    return info.NetworkSettings.IPAddress;
+export function getContainerIP(
+  networkSettings: ContainerInspectInfo["NetworkSettings"]
+): { ipAddress: string; port: number } | null {
+  // Function to validate IP address
+  const isValidIPv4 = (ip: string) => {
+    const ip_regex =
+      /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    const isValid = ip && typeof ip === "string" && ip_regex.test(ip);
+    if (!isValid) {
+      logger.warn(`유효하지 않은 IP 주소 IP: ${ip}`);
+    }
+    return isValid;
+  };
+
+  let validIP: string | null = null;
+  let port: number | null = null;
+
+  // Check direct IPAddress first
+  if (isValidIPv4(networkSettings?.IPAddress)) {
+    logger.debug("Root Network IP 주소를 찾았습니다.");
+    validIP = networkSettings.IPAddress;
   }
 
-  // 2. 네트워크 객체에서 IP 추출 (신규 Docker 버전)
-  if (info?.NetworkSettings?.Networks) {
-    const networks = Object.values(info.NetworkSettings.Networks);
+  // If no valid direct IP, check Networks
+  if (!validIP && networkSettings?.Networks) {
+    const networks = networkSettings.Networks;
 
-    // 유효한 IP를 가진 첫 번째 네트워크 사용
-    for (const network of networks) {
-      if (network.IPAddress && network.IPAddress.trim() !== "") {
-        logger.debug(
-          `컨테이너 IP 주소를 Networks 객체에서 찾음: ${network.IPAddress}`,
-          {
-            containerId: info.Id,
-            containerName: info.Name,
-            networkName: network.NetworkID,
-          }
-        );
-        return network.IPAddress;
+    // Loop through all networks to find valid IP
+    for (const networkName in networks) {
+      const network = networks[networkName];
+      if (isValidIPv4(network?.IPAddress)) {
+        logger.debug(`네트워크 ${networkName}에서 IP 주소를 찾았습니다.`);
+        validIP = network.IPAddress;
+        break;
       }
     }
   }
 
-  // 3. 컨테이너 상태 확인 (실행 중인지 확인)
-  if (info?.State?.Status !== "running") {
-    logger.warn(
-      `실행 중이 아닌 컨테이너의 IP 주소를 요청함 (상태: ${info?.State?.Status})`,
-      {
-        containerId: info.Id,
-        containerName: info.Name,
+  // Get port information if available
+  if (networkSettings?.Ports) {
+    const ports = networkSettings.Ports;
+
+    // Find first valid port mapping
+    for (const portMapping in ports) {
+      const mappings = ports[portMapping];
+      if (Array.isArray(mappings) && mappings.length > 0) {
+        const hostPort = mappings[0]?.HostPort;
+        if (hostPort && /^\d+$/.test(hostPort)) {
+          port = parseInt(hostPort, 10);
+          break;
+        }
       }
-    );
-    // 중지된 컨테이너는 빈 문자열 반환하여 상위 로직에서 처리되도록 함
-    return "";
+    }
   }
 
-  // 4. 대체 IP로 로컬호스트 반환 (긴급 폴백) - 실행 중인 컨테이너만 해당
+  if (validIP && port) {
+    return {
+      ipAddress: validIP,
+      port: port,
+    };
+  }
   logger.warn(
-    `컨테이너 ${info.Name}(${info.Id})의 IP 주소를 찾을 수 없습니다. 빈 문자열 반환`,
-    {
-      container: {
-        id: info.Id,
-        name: info.Name,
-        image: info.Image,
-        state: info.State?.Status,
-      },
-      networkSettings: JSON.stringify(info.NetworkSettings, null, 2),
-    }
+    `유효한 컨테이너 IP 주소를 찾을 수 없습니다 ${JSON.stringify(
+      networkSettings,
+      null,
+      2
+    )}.`
   );
-  return "";
-};
+
+  return null;
+}

@@ -95,7 +95,7 @@ const handleContainerStart = async (containerId: string): Promise<void> => {
     const info = await container.inspect();
 
     const env = getContainerEnv(info?.Config.Env);
-    const ip = getContainerIP(info);
+    const ip = getContainerIP(info.NetworkSettings);
 
     if (!env.host) {
       logger.debug(
