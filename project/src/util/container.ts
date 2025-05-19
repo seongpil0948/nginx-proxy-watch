@@ -1,77 +1,159 @@
+// project/src/util/container.ts
 import { ContainerInspectInfo } from "dockerode";
 import { logger } from "./logging";
 
 /**
- * Get valid IP address from NetworkSettings with regex validation
+ * Get valid IP address from NetworkSettings with robust network traversal
+ * @param networkSettings - Container's network settings from dockerode
+ * @returns Container IP address or null if not found
  */
-export function getContainerIP(
+export function extractContainerIP(
   networkSettings: ContainerInspectInfo["NetworkSettings"]
-): { ipAddress: string; port: number } | null {
-  // Function to validate IP address
-  const isValidIPv4 = (ip: string) => {
-    const ip_regex =
-      /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-    const isValid = ip && typeof ip === "string" && ip_regex.test(ip);
-    if (!isValid) {
-      logger.warn(`유효하지 않은 IP 주소 IP: ${ip}`);
-    }
-    return isValid;
-  };
-
-  let validIP: string | null = null;
-  let port: number | null = null;
-
-  // Check direct IPAddress first
-  if (isValidIPv4(networkSettings?.IPAddress)) {
-    logger.debug("Root Network IP 주소를 찾았습니다.");
-    validIP = networkSettings.IPAddress;
+): string | null {
+  // First check direct IPAddress (for backward compatibility)
+  if (networkSettings?.IPAddress && isValidIPv4(networkSettings.IPAddress)) {
+    logger.debug("Found IP in root IPAddress field", {
+      ip: networkSettings.IPAddress,
+    });
+    return networkSettings.IPAddress;
   }
 
-  // If no valid direct IP, check Networks
-  if (!validIP && networkSettings?.Networks) {
-    const networks = networkSettings.Networks;
+  // If no valid direct IP, check Networks object
+  if (networkSettings?.Networks) {
+    // First try 'bridge' network if exists (common default)
+    if (
+      networkSettings.Networks.bridge &&
+      isValidIPv4(networkSettings.Networks.bridge.IPAddress)
+    ) {
+      logger.debug("Found IP in bridge network", {
+        ip: networkSettings.Networks.bridge.IPAddress,
+      });
+      return networkSettings.Networks.bridge.IPAddress;
+    }
 
-    // Loop through all networks to find valid IP
-    for (const networkName in networks) {
-      const network = networks[networkName];
-      if (isValidIPv4(network?.IPAddress)) {
-        logger.debug(`네트워크 ${networkName}에서 IP 주소를 찾았습니다.`);
-        validIP = network.IPAddress;
-        break;
+    // Otherwise try any network with valid IP
+    for (const networkName in networkSettings.Networks) {
+      const networkInfo = networkSettings.Networks[networkName];
+      if (networkInfo && isValidIPv4(networkInfo.IPAddress)) {
+        logger.debug(`Found IP in ${networkName} network`, {
+          ip: networkInfo.IPAddress,
+          network: networkName,
+        });
+        return networkInfo.IPAddress;
       }
     }
   }
 
-  // Get port information if available
-  if (networkSettings?.Ports) {
-    const ports = networkSettings.Ports;
-
-    // Find first valid port mapping
-    for (const portMapping in ports) {
-      const mappings = ports[portMapping];
-      if (Array.isArray(mappings) && mappings.length > 0) {
-        const hostPort = mappings[0]?.HostPort;
-        if (hostPort && /^\d+$/.test(hostPort)) {
-          port = parseInt(hostPort, 10);
-          break;
-        }
-      }
-    }
-  }
-
-  if (validIP && port) {
-    return {
-      ipAddress: validIP,
-      port: port,
-    };
-  }
-  logger.warn(
-    `유효한 컨테이너 IP 주소를 찾을 수 없습니다 ${JSON.stringify(
-      networkSettings,
-      null,
-      2
-    )}.`
-  );
-
+  // Log the complete network settings for debugging
+  logger.warn("Could not find valid container IP address", {
+    networkSettings: JSON.stringify(networkSettings, null, 2),
+  });
   return null;
+}
+
+/**
+ * Validate IPv4 address format
+ * @param ip - IP address to validate
+ * @returns True if valid IPv4 address
+ */
+function isValidIPv4(ip: string | undefined): boolean {
+  if (!ip) return false;
+
+  const ipRegex =
+    /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+  return ipRegex.test(ip);
+}
+
+/**
+ * Extract port info from container network settings
+ * @param networkSettings - Container's network settings
+ * @param defaultPort - Default port to use if none found
+ * @returns Port number or default port
+ */
+export function extractContainerPort(
+  networkSettings: ContainerInspectInfo["NetworkSettings"],
+  defaultPort: number = 80
+): number {
+  if (!networkSettings?.Ports) {
+    return defaultPort;
+  }
+
+  // Try to find exposed port from ports mapping
+  for (const portMapping in networkSettings.Ports) {
+    const mappings = networkSettings.Ports[portMapping];
+    if (Array.isArray(mappings) && mappings.length > 0) {
+      const hostPort = mappings[0]?.HostPort;
+      if (hostPort && /^\d+$/.test(hostPort)) {
+        return parseInt(hostPort, 10);
+      }
+    }
+  }
+
+  // If no port found in mappings, extract from the port format (e.g. "8080/tcp")
+  for (const portStr in networkSettings.Ports) {
+    const match = portStr.match(/^(\d+)\//);
+    if (match && match[1]) {
+      return parseInt(match[1], 10);
+    }
+  }
+
+  return defaultPort;
+}
+
+/**
+ * Get formatted IP:Port string for container
+ * @param networkSettings - Container network settings
+ * @param envPort - Port from environment variables
+ * @returns Formatted "IP:Port" string or undefined if IP not found
+ */
+export function getContainerIPPort(
+  networkSettings: ContainerInspectInfo["NetworkSettings"],
+  envPort?: number
+): string | undefined {
+  const ip = extractContainerIP(networkSettings);
+  if (!ip) return undefined;
+
+  const port = envPort || extractContainerPort(networkSettings);
+  return `${ip}:${port}`;
+}
+
+/**
+ * Get complete container network information for monitoring
+ * @param networkSettings - Container network settings
+ * @returns Network information object with all discovered details
+ */
+export function getContainerNetworkInfo(
+  networkSettings: ContainerInspectInfo["NetworkSettings"]
+): {
+  ip: string | null;
+  port: number | null;
+  networks: Array<{
+    name: string;
+    ip: string;
+    gateway: string;
+    aliases: string[];
+  }>;
+} {
+  const ip = extractContainerIP(networkSettings);
+  const port = extractContainerPort(networkSettings);
+  const networks = [];
+
+  // Extract information about all networks
+  if (networkSettings?.Networks) {
+    for (const networkName in networkSettings.Networks) {
+      const network = networkSettings.Networks[networkName];
+      networks.push({
+        name: networkName,
+        ip: network.IPAddress,
+        gateway: network.Gateway,
+        aliases: network.Aliases || [],
+      });
+    }
+  }
+
+  return {
+    ip,
+    port,
+    networks,
+  };
 }

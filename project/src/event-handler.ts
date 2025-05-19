@@ -12,7 +12,8 @@ import {
 } from "./util";
 import { docker, LOCATION_POSTFIX } from "./config";
 import { serverListState } from "./state";
-import { getContainerIP } from "./util/container";
+import { processContainerConfig } from "./util/container-config";
+import { getContainerNetworkInfo } from "./util/container";
 
 export const dockerEventHandler =
   (eventType: string) => async (err: any, stream?: ReadableStream) => {
@@ -93,122 +94,45 @@ const handleContainerStart = async (containerId: string): Promise<void> => {
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
-
     const env = getContainerEnv(info?.Config.Env);
-    const ip = getContainerIP(info.NetworkSettings);
 
-    if (!env.host) {
-      logger.debug(
-        `컨테이너 ${containerId}에 host 환경변수가 없습니다. 무시합니다.`
-      );
-      return;
-    }
+    // 개선된 컨테이너 설정 처리 함수 사용
+    const containerConfig = processContainerConfig(containerId, info, env);
 
-    // 상세 네트워크 정보 수집
-    const networkInfo = info?.NetworkSettings?.Networks || {};
-    const networks = Object.keys(networkInfo).map((networkName) => ({
-      name: networkName,
-      ipAddress: networkInfo[networkName].IPAddress,
-      gateway: networkInfo[networkName].Gateway,
-      macAddress: networkInfo[networkName].MacAddress,
-    }));
+    if (containerConfig) {
+      // 서버 리스트 상태 업데이트
+      serverListState.set(containerConfig);
 
-    logger.info(`컨테이너 ${containerId} 네트워크 정보:`, { networks });
-
-    const locationList = env.location
-      ?.split(",")
-      .map((locInfo) => {
-        const locData = locInfo.split(":");
-        if (locData.length === 2) {
-          return {
-            host: `${locData[0]}${LOCATION_POSTFIX}`,
-            path: locData[1],
-          };
-        }
-        return undefined;
-      })
-      .filter((item) => !!item) as
-      | {
-          host: string;
-          path: string;
-        }[]
-      | undefined;
-
-    // 컨테이너 리소스 정보 수집
-    try {
-      const stats = await collectContainerStats(containerId);
-      const cpuUsage = calculateCpuUsage(stats);
-      const memoryUsage = calculateMemoryUsage(stats);
-
-      logger.info(`컨테이너 ${containerId} 리소스 사용량:`, {
-        cpuPercent: cpuUsage.toFixed(2) + "%",
-        memoryPercent: memoryUsage.toFixed(2) + "%",
-        memoryUsed: formatBytes(stats.memory_stats.usage),
-        memoryLimit: formatBytes(stats.memory_stats.limit),
+      // 향상된 네트워크 정보 로깅
+      const networkInfo = getContainerNetworkInfo(info.NetworkSettings);
+      logger.info(`컨테이너 ${containerId} 네트워크 정보:`, {
+        serverName: containerConfig.serverName,
+        networks: networkInfo.networks,
       });
-    } catch (error) {
-      logger.warn(`컨테이너 통계 수집 실패: ${error}`);
+
+      // 컨테이너 리소스 정보 수집
+      try {
+        const stats = await collectContainerStats(containerId);
+        const cpuUsage = calculateCpuUsage(stats);
+        const memoryUsage = calculateMemoryUsage(stats);
+
+        logger.info(`컨테이너 ${containerId} 리소스 사용량:`, {
+          cpuPercent: cpuUsage.toFixed(2) + "%",
+          memoryPercent: memoryUsage.toFixed(2) + "%",
+          memoryUsed: formatBytes(stats.memory_stats.usage),
+          memoryLimit: formatBytes(stats.memory_stats.limit),
+        });
+      } catch (error) {
+        logger.warn(`컨테이너 통계 수집 실패: ${error}`);
+      }
+
+      // 설정 파일 생성
+      await makeFiles();
     }
-
-    const serverName = `${env.host}${
-      env.is_location?.toUpperCase() === "Y" ? LOCATION_POSTFIX : ""
-    }${env.group_host ? "_" + env.location_path : ""}`;
-
-    serverListState.set({
-      serverName,
-      host: env.group_host || env.host,
-      port: env.port || 80,
-      network: [
-        {
-          dockerId: containerId,
-          ip: `${ip}:${env.port}`,
-        },
-      ],
-      isLocation: env.is_location?.toUpperCase(),
-      location: locationList,
-      sslCert:
-        env.cert === "pem"
-          ? `/etc/nginx/certs/${env.ssl || env.group_host || env.host}_crt.pem`
-          : `/etc/nginx/certs/${env.ssl || env.group_host || env.host}.crt`,
-      sslKey:
-        env.cert === "pem"
-          ? `/etc/nginx/certs/${env.ssl || env.group_host || env.host}_key.pem`
-          : `/etc/nginx/certs/${env.ssl || env.group_host || env.host}.key`,
-      https:
-        env.cert === "pem"
-          ? existsSync(
-              `/etc/nginx/certs/${
-                env.ssl || env.group_host || env.host
-              }_crt.pem`
-            ) &&
-            existsSync(
-              `/etc/nginx/certs/${
-                env.ssl || env.group_host || env.host
-              }_key.pem`
-            )
-          : existsSync(
-              `/etc/nginx/certs/${env.ssl || env.group_host || env.host}.crt`
-            ) &&
-            existsSync(
-              `/etc/nginx/certs/${env.ssl || env.group_host || env.host}.key`
-            ),
-      groupYn: env.group_host ? "Y" : "N",
-      locationPath: env.location_path,
-      routingCookieName: env.cookie_name,
-      routingMap: env.routing_map,
-      defaultUpstream: env.default_upstream,
-      hostHeaderMap: env.host_header_map,
-    });
-
-    logger.info(`컨테이너 ${containerId} (${serverName}) 설정 완료`);
-
-    // 설정 파일 생성
-    await makeFiles();
   } catch (error) {
     logger.error(`컨테이너 시작 이벤트 처리 중 오류: ${error}`);
   }
 };
-
 // 컨테이너 중지 이벤트 처리 함수
 const handleContainerStop = async (
   containerId: string,

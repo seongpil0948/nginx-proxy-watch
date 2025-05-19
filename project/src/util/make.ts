@@ -8,6 +8,11 @@ import { templates } from "../config";
 import { serverListState } from "../state";
 import { logger } from "./logging";
 
+/**
+ * Check if container has valid network entries
+ * @param networkEntries - Network entries to validate
+ * @returns True if valid network entries found
+ */
 const hasValidNetworkEntries = (
   networkEntries: Array<{ ip?: string }>
 ): boolean => {
@@ -16,7 +21,7 @@ const hasValidNetworkEntries = (
   }
 
   // 모든 네트워크 엔트리의 IP 주소 유효성 검사
-  return networkEntries.every((entry) => {
+  return networkEntries.some((entry) => {
     if (!entry.ip) return false;
 
     // ":포트번호" 패턴 확인
