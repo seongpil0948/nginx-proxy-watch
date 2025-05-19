@@ -8,22 +8,40 @@ import { templates } from "../config";
 import { serverListState } from "../state";
 import { logger } from "./logging";
 
-// Upstream 설정 파일 생성 함수 개선
+const hasValidNetworkEntries = (
+  networkEntries: Array<{ ip?: string }>
+): boolean => {
+  if (!networkEntries || networkEntries.length === 0) {
+    return false;
+  }
+
+  // 모든 네트워크 엔트리의 IP 주소 유효성 검사
+  return networkEntries.every((entry) => {
+    if (!entry.ip) return false;
+
+    // ":포트번호" 패턴 확인
+    const parts = entry.ip.split(":");
+    return parts.length === 2 && parts[0] && parts[0] !== "";
+  });
+};
+
+// makeUpstream 함수 수정
 const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
   logger.debug(`Upstream 설정 생성 시작`, { conItem });
   if (!conItem.serverName) {
     logger.warn("serverName 없는 컨테이너 항목, Upstream 생성 건너뜀", {
       operation: "makeUpstream",
-      containerData: conItem, // 문제 분석을 위해 전체 데이터 로깅 고려
+      containerData: conItem,
     });
     return;
   }
 
   const configPath = `${templates.upstream.TARGET_PATH}/${templates.upstream.PREFIX}${conItem.serverName}.conf`;
-  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`; // 로그 경로도 메타데이터에 포함하면 좋음
+  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
 
   try {
-    if (conItem.network.length > 0) {
+    // 유효한 네트워크 정보가 있는지 검증
+    if (conItem.network.length > 0 && hasValidNetworkEntries(conItem.network)) {
       logger.debug(`Upstream 설정 생성 시작`, {
         operation: "makeUpstream",
         serverName: conItem.serverName,
@@ -40,19 +58,30 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
 
       // 파일 쓰기
       writeFileSync(configPath, rendered);
-      // 커스텀 로거 메서드 사용
       logger.nginxConfig("생성", configPath, {
         serverName: conItem.serverName,
         type: "upstream",
       });
     } else {
-      // 설정 파일 제거 로직
-      if (existsSync(configPath)) {
-        logger.info(`네트워크 정보 없음, Upstream 설정 파일 제거 시도`, {
+      // 네트워크 정보가 유효하지 않은 경우 - 로그 상세화
+      if (conItem.network.length > 0) {
+        logger.warn(`유효하지 않은 네트워크 정보, Upstream 생성 건너뜀`, {
           operation: "makeUpstream",
           serverName: conItem.serverName,
-          configPath,
+          network: conItem.network,
         });
+      }
+
+      // 기존 설정 파일 제거 처리
+      if (existsSync(configPath)) {
+        logger.info(
+          `유효하지 않은 네트워크 정보, Upstream 설정 파일 제거 시도`,
+          {
+            operation: "makeUpstream",
+            serverName: conItem.serverName,
+            configPath,
+          }
+        );
         unlink(configPath, (err) => {
           if (err) {
             logger.error(`Upstream 설정 파일 삭제 실패`, {
@@ -63,11 +92,10 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
               stack: err.stack,
             });
           } else {
-            // 커스텀 로거 메서드 사용
             logger.nginxConfig("삭제", configPath, {
               serverName: conItem.serverName,
               type: "upstream",
-              reason: "No network",
+              reason: "Invalid network",
             });
           }
         });
@@ -80,7 +108,7 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
       }
     }
 
-    // Nginx 로그 디렉토리 생성 (디버그 레벨 유지 또는 info로 변경 고려)
+    // Nginx 로그 디렉토리 생성
     if (!existsSync(nginxLogPath)) {
       mkdirSync(nginxLogPath, { recursive: true });
       logger.debug(`Nginx 로그 디렉토리 생성`, {
@@ -92,7 +120,7 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
     logger.error(`Upstream 설정 처리 중 오류`, {
       operation: "makeUpstream",
       serverName: conItem.serverName,
-      configPath, // 오류 발생 시점의 configPath
+      configPath,
       error: error.message,
       stack: error.stack,
     });
@@ -310,36 +338,62 @@ const makeLocation = async (conItem: IContainerStatusItem): Promise<void> => {
 
 const nginxReload = async (): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // 커스텀 로거 메서드 사용
     logger.nginxConfig("재로드 시도", "N/A", { operation: "nginxReload" });
-    exec("nginx -s reload", (error, stdout, stderr) => {
-      // stdout/stderr는 debug 레벨로 로깅하는 것이 일반적
-      if (stdout)
-        logger.debug(`Nginx 재로드 stdout`, {
-          operation: "nginxReload",
-          output: stdout,
-        });
-      if (stderr)
-        logger.debug(`Nginx 재로드 stderr`, {
-          operation: "nginxReload",
-          output: stderr,
-        }); // 오류성 stderr도 있을 수 있음
 
-      if (error) {
-        // 커스텀 로거 메서드 사용 및 에러 정보 포함
-        logger.error(`Nginx 재로드 실패`, {
-          operation: "nginxReload",
-          action: "재로드 실패",
-          error: error.message,
-          stack: error.stack,
-          stderr, // stderr는 실패 시 중요한 정보일 수 있음
+    // 먼저 nginx 설정 테스트 실행
+    exec("nginx -t", (testError, testStdout, testStderr) => {
+      if (testError) {
+        // 설정 테스트 실패
+        logger.error(`Nginx 설정 테스트 실패`, {
+          operation: "nginxReload_test",
+          action: "설정 테스트 실패",
+          error: testError.message,
+          stderr: testStderr,
         });
-        reject(error);
-      } else {
-        // 커스텀 로거 메서드 사용
-        logger.nginxConfig("재로드 성공", "N/A", { operation: "nginxReload" });
-        resolve();
+
+        // 오류가 upstream 관련 문제인지 확인
+        if (testStderr.includes("no host in upstream")) {
+          logger.error(`Upstream 설정 오류 감지됨, 문제 파일 검색 필요`, {
+            operation: "nginxReload_test",
+          });
+        }
+
+        reject(testError);
+        return;
       }
+
+      // 설정 테스트 성공 시 재로드 진행
+      exec("nginx -s reload", (error, stdout, stderr) => {
+        if (stdout) {
+          logger.debug(`Nginx 재로드 stdout`, {
+            operation: "nginxReload",
+            output: stdout,
+          });
+        }
+
+        if (stderr) {
+          logger.debug(`Nginx 재로드 stderr`, {
+            operation: "nginxReload",
+            output: stderr,
+          });
+        }
+
+        if (error) {
+          logger.error(`Nginx 재로드 실패`, {
+            operation: "nginxReload",
+            action: "재로드 실패",
+            error: error.message,
+            stack: error.stack,
+            stderr,
+          });
+          reject(error);
+        } else {
+          logger.nginxConfig("재로드 성공", "N/A", {
+            operation: "nginxReload",
+          });
+          resolve();
+        }
+      });
     });
   });
 };
