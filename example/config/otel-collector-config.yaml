@@ -31,8 +31,8 @@ receivers:
             WARN: WARN
   filelog/nginx/access:
     include:
-      - /var/log/nginx/**/access*.log
-      - /var/log/nginx/access*.log
+      - /var/log/nginx/**/access-was.log
+      - /var/log/nginx/access-was.log
     exclude:
       - /**/*.gz
     start_at: beginning
@@ -45,12 +45,21 @@ receivers:
       - type: regex_parser
         id: access_log_parser
         regex: '^remote_addr=(?P<remote_addr>[^ ]+) remote_user="(?P<remote_user>[^"]*)" time_local="(?P<time_local>[^"]*)" request="(?P<request>[^"]*)" status=(?P<status>\d+) body_bytes_sent=(?P<body_bytes_sent>\d+) referer="(?P<referer>[^"]*)" user_agent="(?P<user_agent>[^"]*)" x_forwarded_for="(?P<x_forwarded_for>[^"]*)" request_time=(?P<request_time>[^ ]+) upstream_response_time=(?P<upstream_response_time>[^ ]+)( trace_id=(?P<trace_id>[a-f0-9]+) span_id=(?P<span_id>[a-f0-9]+))?'
+        trace:
+          trace_id:
+            parse_from: attributes.trace_id
+          span_id:
+            parse_from: attributes.span_id
         time_parser:
           parse_from: attributes.time_local
           layout_type: strptime
           layout: "%d/%b/%Y:%H:%M:%S %z"
+
+      - type: remove
+        field: attributes.trace_id           
+      - type: remove
+        field: attributes.span_id           
       
-      # HTTP 메서드 및 경로 추출
       - type: regex_parser
         id: extract_http_parts
         regex: '^(?P<method>[A-Z]+) (?P<path>[^ ]+) .*$'
