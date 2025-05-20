@@ -53,7 +53,9 @@ echo -e "${BLUE}=====================================${NC}\n"
 
 # Docker 환경 시작
 echo -e "${GREEN}Docker Compose 환경 시작 중...${NC}"
-docker compose -f example/docker-compose-sample.yml up -d --build --force-recreate --remove-orphans
+docker compose -f example/docker-compose-sample.yml up \
+  -d --build --force-recreate --remove-orphans \
+  --scale app-main=2 --scale app-multipath-root=2 --scale app-cookie-pharmacy=2 --scale app-balance-2=2
 
 # 상태 확인
 echo -e "${GREEN}실행 중인 컨테이너 확인:${NC}"

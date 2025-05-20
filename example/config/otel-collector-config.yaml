@@ -56,13 +56,13 @@ receivers:
           layout: "%d/%b/%Y:%H:%M:%S %z"
 
       - type: remove
-        field: attributes.trace_id           
+        field: attributes.trace_id
       - type: remove
-        field: attributes.span_id           
-      
+        field: attributes.span_id
+
       - type: regex_parser
         id: extract_http_parts
-        regex: '^(?P<method>[A-Z]+) (?P<path>[^ ]+) .*$'
+        regex: "^(?P<method>[A-Z]+) (?P<path>[^ ]+) .*$"
         parse_from: attributes.request
 
   filelog/nginx/error:

@@ -27,6 +27,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "18080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./nginx-proxy/local_certs:/etc/nginx/certs:ro
@@ -34,6 +35,7 @@ services:
       - ./nginx-proxy/local_logs/watcher:/var/log/docker-event-watcher
     environment:
       - LOG_LEVEL=debug # 상세 로그 확인용
+      - REQUIRED_SERVERS=app-api,hospital.internal,pharmacy.internal,cookie.test.local
     restart: always
     networks:
       - test-network
@@ -45,7 +47,6 @@ services:
     build:
       context: .
       dockerfile: ./app-main/Dockerfile
-    container_name: app-main-test
     environment:
       - VIRTUAL_HOST=main.test.local
       - VIRTUAL_PORT=8080
@@ -62,7 +63,6 @@ services:
     build:
       context: .
       dockerfile: ./app-api/Dockerfile
-    container_name: app-api-test
     environment:
       - VIRTUAL_GROUP_HOST=main.test.local
       - VIRTUAL_HOST=api.internal
@@ -80,7 +80,6 @@ services:
     build:
       context: .
       dockerfile: ./app-admin/Dockerfile
-    container_name: app-admin-test
     environment:
       - VIRTUAL_GROUP_HOST=main.test.local
       - VIRTUAL_HOST=admin.internal
@@ -98,7 +97,6 @@ services:
     build:
       context: .
       dockerfile: ./app-group-service-a/Dockerfile
-    container_name: app-group-service-a-test
     environment:
       - VIRTUAL_GROUP_HOST=group.test.local
       - VIRTUAL_HOST=serviceA.internal
@@ -116,7 +114,6 @@ services:
     build:
       context: .
       dockerfile: ./app-group-service-b/Dockerfile
-    container_name: app-group-service-b-test
     environment:
       - VIRTUAL_GROUP_HOST=group.test.local
       - VIRTUAL_HOST=serviceB.internal
@@ -134,7 +131,6 @@ services:
     build:
       context: .
       dockerfile: ./app-cookie-hospital/Dockerfile
-    container_name: app-cookie-hospital-test
     environment:
       - VIRTUAL_HOST=hospital.internal
       - VIRTUAL_PORT=8085
@@ -149,7 +145,6 @@ services:
     build:
       context: .
       dockerfile: ./app-cookie-pharmacy/Dockerfile
-    container_name: app-cookie-pharmacy-test
     environment:
       - VIRTUAL_HOST=pharmacy.internal
       - VIRTUAL_PORT=8086
@@ -163,7 +158,6 @@ services:
   # 8. 쿠키 라우팅 설정 서비스
   app-cookie-router:
     image: alpine:latest
-    container_name: app-cookie-router-config
     command: ["tail", "-f", "/dev/null"]
     environment:
       - VIRTUAL_HOST=cookie.test.local
@@ -185,7 +179,6 @@ services:
     build:
       context: .
       dockerfile: ./app-secure/Dockerfile
-    container_name: app-secure-test
     environment:
       - VIRTUAL_HOST=secure.test.local
       - VIRTUAL_PORT=8087
@@ -203,7 +196,6 @@ services:
     build:
       context: .
       dockerfile: ./app-balance/Dockerfile
-    container_name: app-balance-1
     environment:
       - VIRTUAL_HOST=balance.test.local
       - VIRTUAL_PORT=8088
@@ -219,7 +211,6 @@ services:
     build:
       context: .
       dockerfile: ./app-balance/Dockerfile
-    container_name: app-balance-2
     environment:
       - VIRTUAL_HOST=balance.test.local
       - VIRTUAL_PORT=8089
@@ -236,7 +227,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-multipath-root
     environment:
       - VIRTUAL_HOST=multipath.test.local
       - VIRTUAL_PORT=8090
@@ -253,7 +243,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-path1
     environment:
       - VIRTUAL_GROUP_HOST=multipath.test.local
       - VIRTUAL_HOST=path1.internal
@@ -271,7 +260,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-path2
     environment:
       - VIRTUAL_GROUP_HOST=multipath.test.local
       - VIRTUAL_HOST=path2.internal
@@ -289,7 +277,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-path3
     environment:
       - VIRTUAL_GROUP_HOST=multipath.test.local
       - VIRTUAL_HOST=path3.internal
@@ -307,7 +294,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-path4
     environment:
       - VIRTUAL_GROUP_HOST=multipath.test.local
       - VIRTUAL_HOST=path4.internal
@@ -325,7 +311,6 @@ services:
     build:
       context: .
       dockerfile: ./app-multipath/Dockerfile
-    container_name: app-path5
     environment:
       - VIRTUAL_GROUP_HOST=multipath.test.local
       - VIRTUAL_HOST=path5.internal

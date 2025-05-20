@@ -1,5 +1,4 @@
 // project/src/health.ts
-import { docker } from "./config";
 import {
   collectContainerStats,
   calculateCpuUsage,

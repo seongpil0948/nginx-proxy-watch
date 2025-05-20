@@ -114,14 +114,18 @@ server {
           <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
             # 쿠키 라우팅 변수 사용
             proxy_pass http://$target_upstream;
+
+            access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
+
           <% } else { %>
             # 쿠키 라우팅 없을 시 기본 업스트림 사용
             proxy_pass http://<%= serverName %>;
+
+            access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
           <% } %>
 
           # 루트 location 로그
           charset  UTF-8;
-          access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
           error_log   /var/log/nginx/<%= serverName %>/error-was.log;
       }
     <% } %>

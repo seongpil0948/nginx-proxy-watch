@@ -3,8 +3,10 @@
   "type": "module",
   "main": "./src/index.js",
   "dependencies": {
+    "@types/express": "^5.0.2",
     "dockerode": "^4.0.6",
     "ejs": "^3.1.6",
+    "express": "^5.1.0",
     "lodash": "^4.17.21",
     "node-loader": "^2.0.0",
     "queue": "^6.0.2",
