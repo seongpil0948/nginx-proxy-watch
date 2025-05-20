@@ -6,11 +6,9 @@ import { docker } from "./config";
 import { serverListState } from "./state";
 import { logger } from "./util";
 import {
-  checkUpstreamHealth,
   checkContainerHealth,
   checkRequiredServers,
   getRequiredServers,
-  CheckType,
 } from "./health-checker";
 
 /**
@@ -96,97 +94,6 @@ export const startApiServer = async (
       res.status(500).json({
         status: "error",
         message: "Health check failed",
-        error: error.message,
-      });
-    }
-  });
-
-  // Detailed status endpoint with expanded health check information
-  app.get("/status", async (req, res) => {
-    try {
-      // Parse query parameters
-      const checkTypes: CheckType[] = req.query.checks
-        ? ((req.query.checks as string).split(",") as CheckType[])
-        : ["http", "containerStatus", "requiredServer", "nginxConfig"];
-
-      const httpCheckPath = (req.query.path as string) || "/status";
-      const httpTimeout = req.query.timeout
-        ? parseInt(req.query.timeout as string, 10)
-        : 5000;
-
-      // Get current state
-      const serverList = serverListState.get();
-
-      // Get comprehensive health status
-      const upstreamsHealth = await checkUpstreamHealth({
-        httpCheckPath,
-        httpTimeout,
-        checkTypes,
-      });
-
-      // Build detailed response
-      const response = {
-        timestamp: new Date().toISOString(),
-        overallStatus: upstreamsHealth.summary.overallStatus,
-        serverCount: Object.keys(serverList).length,
-        upstreamsCount: upstreamsHealth.summary.total,
-        upstreamsHealthy: upstreamsHealth.summary.healthy,
-        upstreamsHealthyPercentage: upstreamsHealth.summary.healthyPercentage,
-        containerStatus: upstreamsHealth.containerHealthStatus,
-        requiredServers: upstreamsHealth.requiredServersStatus,
-        nginxConfig: upstreamsHealth.nginxStatus,
-        issues: upstreamsHealth.issues,
-      };
-
-      // Set HTTP status code based on health status
-      const statusCode =
-        upstreamsHealth.summary.overallStatus === "healthy"
-          ? 200
-          : upstreamsHealth.summary.overallStatus === "degraded"
-          ? 200
-          : 503;
-
-      res.status(statusCode).json(response);
-    } catch (error: any) {
-      logger.error(`Status check failed`, {
-        operation: "status_check",
-        error: error.message,
-      });
-
-      res.status(500).json({
-        status: "error",
-        message: "Status check failed",
-        error: error.message,
-      });
-    }
-  });
-
-  // List all upstream servers with health status
-  app.get("/upstreams", async (req, res) => {
-    try {
-      const options = {
-        httpCheckPath: (req.query.path as string) || "/status",
-        httpTimeout: req.query.timeout
-          ? parseInt(req.query.timeout as string, 10)
-          : 5000,
-        checkTypes: ["http"] as CheckType[],
-      };
-
-      const upstreamsHealth = await checkUpstreamHealth(options);
-
-      res.json({
-        upstreams: upstreamsHealth.upstreams,
-        summary: upstreamsHealth.summary,
-      });
-    } catch (error: any) {
-      logger.error(`Upstreams check failed`, {
-        operation: "upstreams_check",
-        error: error.message,
-      });
-
-      res.status(500).json({
-        status: "error",
-        message: "Upstreams check failed",
         error: error.message,
       });
     }

@@ -108,10 +108,10 @@ const containerHealthCheck = async (): Promise<void> => {
 
 // 주기적인 컨테이너 헬스체크 설정
 export const scheduleHealthCheck = (
-  intervalMinutes: number
+  intervalSeconds: number
 ): NodeJS.Timeout => {
   logger.info(
-    `${intervalMinutes}분 간격으로 컨테이너 헬스체크 및 설정 검증 스케줄링`
+    `${intervalSeconds}초 간격으로 컨테이너 헬스체크 및 설정 검증 스케줄링`
   );
-  return setInterval(containerHealthCheck, intervalMinutes * 60 * 1000);
+  return setInterval(containerHealthCheck, intervalSeconds * 1000);
 };
