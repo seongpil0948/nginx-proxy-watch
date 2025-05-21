@@ -64,7 +64,6 @@ export function processContainerConfig(
     routingCookieName: env.cookie_name,
     routingMap: env.routing_map,
     defaultUpstream: env.default_upstream,
-    hostHeaderMap: env.host_header_map,
   };
 }
 

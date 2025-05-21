@@ -103,17 +103,17 @@ log "INFO" "테스트 결과 저장 폴더: $RESULTS_DIR"
 
 # 기본 호스트 테스트
 log "INFO" "=== 기본 호스트 테스트 ==="
-test_http "http://main.test.local" "메인 호스트" 200
+test_http "http://alpha-main.test.local" "메인 호스트" 200
 ((total_tests++))
 if [ $? -eq 0 ]; then ((passed_tests++)); fi
 
 # 그룹 호스트 테스트
 log "INFO" "=== 그룹 호스트 테스트 ==="
-test_http "http://main.test.local/api" "API 서비스" 200
+test_http "http://alpha-main.test.local/api" "API 서비스" 200
 ((total_tests++))
 if [ $? -eq 0 ]; then ((passed_tests++)); fi
 
-test_http "http://main.test.local/admin" "Admin 서비스" 200
+test_http "http://alpha-main.test.local/admin" "Admin 서비스" 200
 ((total_tests++))
 if [ $? -eq 0 ]; then ((passed_tests++)); fi
 
@@ -169,13 +169,13 @@ if [ $TEST_ALL -eq 1 ]; then
   log "INFO" "=== 추가 상세 테스트 ==="
   
   # 잘못된 경로 테스트
-  test_http "http://main.test.local/nonexistent" "잘못된 경로" 404
+  test_http "http://alpha-main.test.local/nonexistent" "잘못된 경로" 404
   ((total_tests++))
   if [ $? -eq 0 ]; then ((passed_tests++)); fi
   
   # 헤더 테스트
-  log "TEST" "헤더 확인: main.test.local"
-  headers=$(curl -s -I "http://main.test.local" | head -20)
+  log "TEST" "헤더 확인: alpha-main.test.local"
+  headers=$(curl -s -I "http://alpha-main.test.local" | head -20)
   echo "$headers" > "$RESULTS_DIR/main_headers.txt"
   log "INFO" "헤더 저장됨: $RESULTS_DIR/main_headers.txt"
   

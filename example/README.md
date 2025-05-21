@@ -39,7 +39,6 @@
 | `VIRTUAL_COOKIE_NAME` | 라우팅에 사용할 쿠키 이름 | `user_type` |
 | `VIRTUAL_ROUTING_MAP` | 쿠키 값:업스트림 매핑 | `admin:admin-svc,user:user-svc` |
 | `VIRTUAL_DEFAULT_UPSTREAM` | 쿠키가 없거나 매핑되지 않은 경우 기본 라우팅 대상 | `default-svc` |
-| `VIRTUAL_HOST_HEADER_MAP` | 업스트림별 Host 헤더 재정의 | `admin-svc:admin.internal,user-svc:user.internal` |
 
 ## 프로젝트 구조
 
@@ -88,7 +87,6 @@ environment:
   - VIRTUAL_COOKIE_NAME=mall_type
   - VIRTUAL_ROUTING_MAP=1:service-a,2:service-b
   - VIRTUAL_DEFAULT_UPSTREAM=service-b
-  - VIRTUAL_HOST_HEADER_MAP=service-a:service-a.internal,service-b:service-b.internal
 ```
 
 ### 4. 보안 연결(HTTPS)
@@ -109,7 +107,7 @@ environment:
 2. 파일 열기: `C:\Windows\System32\drivers\etc\hosts`
 3. 다음 줄 추가:
 ```
-127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
+127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
 ```
 4. 저장 후 닫기
 
@@ -120,7 +118,7 @@ sudo nano /etc/hosts
 ```
 2. 다음 줄 추가:
 ```
-127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
+127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
 ```
 3. Ctrl+O로 저장 후 Ctrl+X로 나가기
 
@@ -148,9 +146,9 @@ docker compose -f example/docker-compose-sample.yml up -d --build
 ```
 
 4. 브라우저에서 테스트:
-   - 기본 Vhost: http://main.test.local
-   - 그룹 호스트 API: http://main.test.local/api
-   - 그룹 호스트 Admin: http://main.test.local/admin
+   - 기본 Vhost: http://alpha-main.test.local
+   - 그룹 호스트 API: http://alpha-main.test.local/api
+   - 그룹 호스트 Admin: http://alpha-main.test.local/admin
    - 그룹 서비스: http://group.test.local/serviceA 및 http://group.test.local/serviceB
    - 쿠키 라우팅: http://cookie.test.local (쿠키 mall_type=1 또는 mall_type=2 설정)
    - 보안 연결: https://secure.test.local
@@ -177,6 +175,6 @@ docker exec nginx-proxy-test ls -la /app/conf.d/upstream.conf/
 # 생성된 vhost 설정 확인
 docker exec nginx-proxy-test ls -la /app/conf.d/vhost.conf/
 
-# 설정 내용 확인 (예: main.test.local)
-docker exec nginx-proxy-test cat /app/conf.d/vhost.conf/vhost-main.test.local.conf
+# 설정 내용 확인 (예: alpha-main.test.local)
+docker exec nginx-proxy-test cat /app/conf.d/vhost.conf/vhost-alpha-main.test.local.conf
 ```

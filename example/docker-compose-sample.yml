@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: ./app-main/Dockerfile
     environment:
-      - VIRTUAL_HOST=main.test.local
+      - VIRTUAL_HOST=alpha-main.test.local
       - VIRTUAL_PORT=8080
       - PORT=8080
       - VIRTUAL_LOCATION_PATH=main
@@ -62,7 +62,7 @@ services:
       context: .
       dockerfile: ./app-api/Dockerfile
     environment:
-      - VIRTUAL_GROUP_HOST=main.test.local
+      - VIRTUAL_GROUP_HOST=alpha-main.test.local
       - VIRTUAL_HOST=api.internal
       - VIRTUAL_PORT=8081
       - PORT=8081
@@ -79,7 +79,7 @@ services:
       context: .
       dockerfile: ./app-admin/Dockerfile
     environment:
-      - VIRTUAL_GROUP_HOST=main.test.local
+      - VIRTUAL_GROUP_HOST=alpha-main.test.local
       - VIRTUAL_HOST=admin.internal
       - VIRTUAL_PORT=8082
       - PORT=8082
@@ -163,8 +163,6 @@ services:
       - VIRTUAL_COOKIE_NAME=mall_type
       - VIRTUAL_ROUTING_MAP=1:hospital.internal,2:pharmacy.internal
       - VIRTUAL_DEFAULT_UPSTREAM=pharmacy.internal
-      # 호스트 헤더 매핑 추가
-      - VIRTUAL_HOST_HEADER_MAP=hospital.internal:app-cookie-hospital,pharmacy.internal:app-cookie-pharmacy
     networks:
       - test-network
     depends_on:

@@ -58,7 +58,6 @@ export const getContainerEnv = (envs?: string[]): ContainerEnv => {
             // 유효하지 않은 포트 번호면 기본값(80) 또는 다른 값 사용 고려
             return { ...prev, port: isNaN(portNumber) ? 80 : portNumber };
           case "routing_map":
-          case "host_header_map":
             const parsedMap = parseMapString(value);
             // 파싱 성공 시에만 해당 키로 객체 저장
             return parsedMap ? { ...prev, [normalizedKey]: parsedMap } : prev;
@@ -96,8 +95,5 @@ export const getContainerEnv = (envs?: string[]): ContainerEnv => {
     cookie_name: env.cookie_name,
     routing_map: env.routing_map as { [key: string]: string } | undefined,
     default_upstream: env.default_upstream,
-    host_header_map: env.host_header_map as
-      | { [key: string]: string }
-      | undefined,
   };
 };

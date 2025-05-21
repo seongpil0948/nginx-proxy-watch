@@ -1,4 +1,4 @@
-import { ContainerInfo } from 'dockerode';
+import { ContainerInfo } from "dockerode";
 
 export interface ContainerEnv {
   host: string;
@@ -8,14 +8,13 @@ export interface ContainerEnv {
   conf?: string;
   location?: string;
   is_location?: string;
-  cert?: 'pem' | 'crt';
+  cert?: "pem" | "crt";
   group_host?: string;
   location_path?: string;
 
   cookie_name?: string;
   routing_map?: { [key: string]: string };
   default_upstream?: string;
-  host_header_map?: { [key: string]: string };
 }
 
 export interface Template {
@@ -41,14 +40,14 @@ export interface IContainerStatusItem {
     host: string;
     path: string;
   }[];
-  cert?: 'pem' | 'crt';
+  cert?: "pem" | "crt";
   groupYn?: string;
   locationPath?: string;
 
   routingCookieName?: string;
   routingMap?: { [key: string]: string };
   defaultUpstream?: string;
-  hostHeaderMap?: { [key: string]: string };  
+  hostHeaderMap?: { [key: string]: string };
 }
 
 export interface IContainersStatus {

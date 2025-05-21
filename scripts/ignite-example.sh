@@ -33,7 +33,7 @@ fi
 # 호스트 파일 설정 확인 및 안내
 echo -e "${BLUE}========== 호스트 파일 설정 ===========${NC}"
 echo -e "${YELLOW}테스트 환경이 제대로 작동하려면 로컬 hosts 파일에 다음 항목을 추가해야 합니다:${NC}"
-echo -e "${GREEN}127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local${NC}"
+echo -e "${GREEN}127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local${NC}"
 
 echo -e "\n${YELLOW}호스트 파일 위치:${NC}"
 echo -e "  - Windows: ${BLUE}C:\\Windows\\System32\\drivers\\etc\\hosts${NC} (관리자 권한으로 편집)"
@@ -42,11 +42,11 @@ echo -e "  - macOS/Linux: ${BLUE}/etc/hosts${NC} (sudo 권한으로 편집)"
 # 호스트 파일 상태 확인 (리눅스/맥 전용)
 if [ -f "/etc/hosts" ]; then
   echo -e "\n${YELLOW}현재 hosts 파일 확인 중...${NC}"
-  if grep -q "main.test.local\|group.test.local" /etc/hosts; then
+  if grep -q "alpha-main.test.local\|group.test.local" /etc/hosts; then
     echo -e "${GREEN}테스트 도메인이 이미 hosts 파일에 설정되어 있습니다.${NC}"
   else
     echo -e "${RED}테스트 도메인 설정이 확인되지 않았습니다. hosts 파일을 수동으로 편집해주세요.${NC}"
-    echo -e "명령어 예시: ${BLUE}sudo sh -c 'echo \"127.0.0.1 main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local\" >> /etc/hosts'${NC}"
+    echo -e "명령어 예시: ${BLUE}sudo sh -c 'echo \"127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local\" >> /etc/hosts'${NC}"
   fi
 fi
 echo -e "${BLUE}=====================================${NC}\n"
@@ -63,9 +63,9 @@ docker compose -f example/docker-compose-sample.yml ps
 
 echo -e "\n${GREEN}테스트 환경이 성공적으로 시작되었습니다!${NC}"
 echo -e "${YELLOW}다음 URL로 테스트할 수 있습니다:${NC}"
-echo "  - 기본 Vhost: http://main.test.local/main"
-echo "  - Group Host API: http://main.test.local/api"
-echo "  - Group Host Admin: http://main.test.local/admin"
+echo "  - 기본 Vhost: http://alpha-main.test.local/main"
+echo "  - Group Host API: http://alpha-main.test.local/api"
+echo "  - Group Host Admin: http://alpha-main.test.local/admin"
 echo "  - 그룹 서비스: http://group.test.local/serviceA 및 http://group.test.local/serviceB"
 echo "  - 쿠키 라우팅: http://cookie.test.local (브라우저에서 쿠키 service_type=1 또는 2 설정)"
 echo "  - 보안 연결: https://secure.test.local"
