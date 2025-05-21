@@ -17,6 +17,7 @@ receivers:
     operators:
       - type: regex_parser
         regex: '^\[(?P<time>[^\]]+)\] \[(?P<level>[A-Z]+)\] (?P<message>.*)(?: \| (?P<metadata>\{.*\}))?$'
+        on_error: drop_quiet
         time_parser:
           parse_from: attributes.time
           layout_type: gotime
@@ -44,7 +45,7 @@ receivers:
     operators:
       - type: regex_parser
         id: access_log_parser
-        regex: '^remote_addr=(?P<remote_addr>[^ ]+) remote_user="(?P<remote_user>[^"]*)" time_local="(?P<time_local>[^"]*)" request="(?P<request>[^"]*)" status=(?P<status>\d+) body_bytes_sent=(?P<body_bytes_sent>\d+) referer="(?P<referer>[^"]*)" user_agent="(?P<user_agent>[^"]*)" x_forwarded_for="(?P<x_forwarded_for>[^"]*)" request_time=(?P<request_time>[^ ]+) upstream_response_time=(?P<upstream_response_time>[^ ]+)( trace_id=(?P<trace_id>[a-f0-9]+) span_id=(?P<span_id>[a-f0-9]+))?'
+        regex: '^remote_addr=(?P<remote_addr>[^ ]+) remote_user="(?P<remote_user>[^"]*)" time_local="(?P<time_local>[^"]*)" request="(?P<request>[^"]*)" status=(?P<status>\d+) body_bytes_sent=(?P<body_bytes_sent>\d+) referer="(?P<referer>[^"]*)" user_agent="(?P<user_agent>[^"]*)" x_forwarded_for="(?P<x_forwarded_for>[^"]*)" request_time=(?P<request_time>[^ ]+) upstream_response_time=(?P<upstream_response_time>[^ ]+) upstream=(?P<upstream>[^ ]+) trace_id=(?P<trace_id>[a-f0-9]+) span_id=(?P<span_id>[a-f0-9]+)$'
         trace:
           trace_id:
             parse_from: attributes.trace_id

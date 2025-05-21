@@ -1,14 +1,22 @@
 <%# --- 쿠키 기반 라우팅 설정 (템플릿 시작 부분에 추가) --- %>
 <%# 필요한 변수: routingCookieName, routingMap, defaultUpstream, hostHeaderMap (선택적) %>
 <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
-map $cookie_<%= routingCookieName %> $target_upstream {
+# 현재 서버(<%= serverName %>)에 대한 쿠키 라우팅 설정
+map $cookie_<%= routingCookieName %> $<%= serverName.replace(/\./g, '_') %>_target {
     default   <%= defaultUpstream || serverName %>; 
     <% Object.keys(routingMap).forEach(cookieValue => { %>
     "<%= cookieValue %>"       <%= routingMap[cookieValue] %>;
     <% }); %>
 }
 
-map $target_upstream $upstream_host_header {
+# 현재 호스트에 대한 타겟 업스트림 설정
+map $host $target_upstream {
+    hostnames;
+    <%= serverName %> $<%= serverName.replace(/\./g, '_') %>_target;
+    default "-"; # 기본값
+}
+
+map $<%= serverName.replace(/\./g, '_') %>_target $upstream_host_header {
     <% if (typeof hostHeaderMap !== 'undefined' && Object.keys(hostHeaderMap).length > 0) { %>
       <% Object.keys(hostHeaderMap).forEach(upstreamName => { %>
       <%= upstreamName %>   "<%= hostHeaderMap[upstreamName] %>";
@@ -104,28 +112,24 @@ server {
           <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
             # 쿠키 라우팅 시 Host 헤더는 map 사용
             proxy_set_header Host $upstream_host_header;
+            
+            # 쿠키 라우팅 변수 사용 - 독립된 변수 이름으로 설정하여 충돌 방지
+            set $current_target $<%= serverName.replace(/\./g, '_') %>_target;
+            proxy_pass http://$current_target;
           <% } else { %>
             # 일반 라우팅 시 Host 헤더는 원래 값 사용
             proxy_set_header Host $http_host;
-          <% } %>
-          # 나머지 공통 헤더는 server 블록에서 설정됨
-
-          # 프록시 패스 설정
-          <% if (typeof routingCookieName !== 'undefined' && routingCookieName && typeof routingMap !== 'undefined' && Object.keys(routingMap).length > 0) { %>
-            # 쿠키 라우팅 변수 사용
-            proxy_pass http://$target_upstream;
-
-            access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
-
-          <% } else { %>
+            
             # 쿠키 라우팅 없을 시 기본 업스트림 사용
             proxy_pass http://<%= serverName %>;
-
-            access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
+            
+            # 일반 라우팅의 경우 로그용 타겟 업스트림 설정
+            set $target_upstream "<%= serverName %>";
           <% } %>
 
           # 루트 location 로그
           charset  UTF-8;
+          access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
           error_log   /var/log/nginx/<%= serverName %>/error-was.log;
       }
     <% } %>
