@@ -30,12 +30,10 @@ services:
       - "18080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./nginx-proxy/.env:/etc/nginx/.env:ro
       - ./nginx-proxy/local_certs:/etc/nginx/certs:ro
       - ./nginx-proxy/local_logs/nginx:/var/log/nginx
       - ./nginx-proxy/local_logs/watcher:/var/log/docker-event-watcher
-    environment:
-      - LOG_LEVEL=debug # 상세 로그 확인용
-      - REQUIRED_SERVERS=app-api,hospital.internal,pharmacy.internal,cookie.test.local
     restart: always
     networks:
       - test-network

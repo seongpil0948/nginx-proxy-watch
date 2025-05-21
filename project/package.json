@@ -5,6 +5,7 @@
   "dependencies": {
     "@types/express": "^5.0.2",
     "dockerode": "^4.0.6",
+    "dotenv": "^16.5.0",
     "ejs": "^3.1.6",
     "express": "^5.1.0",
     "lodash": "^4.17.21",

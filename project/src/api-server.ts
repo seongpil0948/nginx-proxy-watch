@@ -7,7 +7,9 @@ import { serverListState } from "./state";
 import { logger } from "./util";
 import {
   checkContainerHealth,
+  checkNginxConfig,
   checkRequiredServers,
+  checkServiceHealth,
   getRequiredServers,
 } from "./health-checker";
 
@@ -51,30 +53,36 @@ export const startApiServer = async (
     });
   });
 
-  // Simple health endpoint
   app.get("/health", async (req, res) => {
     try {
-      // Quick health check - avoid full scanning for performance
+      // Get server list
       const serverList = serverListState.get();
       const serverCount = Object.keys(serverList).length;
 
-      // Check required servers only
+      // Get required servers list
       const requiredServers = getRequiredServers();
+
+      // Check required servers with enhanced check
       const requiredCheck = await checkRequiredServers(
         requiredServers,
         serverList
       );
 
-      // Health status determination
+      // Detailed health status determination
       let status = "healthy";
       if (!requiredCheck.healthy) {
+        // If any required service is unhealthy, set status to critical
         status = "critical";
+      } else if (requiredCheck.services.some((s) => !s.healthy)) {
+        // If non-required services have issues, set to degraded
+        status = "degraded";
       }
 
-      // HTTP status code based on health
+      // Set appropriate HTTP status code
       const httpStatus =
         status === "healthy" ? 200 : status === "degraded" ? 200 : 503;
 
+      // Return detailed health report
       res.status(httpStatus).json({
         status,
         timestamp: new Date().toISOString(),
@@ -84,6 +92,14 @@ export const startApiServer = async (
           requiredAvailable: requiredCheck.available,
         },
         requiredServersHealthy: requiredCheck.healthy,
+        unhealthyServices: requiredCheck.missing,
+        details: requiredCheck.services
+          .filter((s) => !s.healthy)
+          .map((s) => ({
+            name: s.serviceName,
+            containers: s.containers.length,
+            unhealthyCount: s.containers.filter((c) => !c.healthy).length,
+          })),
       });
     } catch (error: any) {
       logger.error(`Health check failed`, {
@@ -94,6 +110,101 @@ export const startApiServer = async (
       res.status(500).json({
         status: "error",
         message: "Health check failed",
+        error: error.message,
+      });
+    }
+  });
+
+  // Add new endpoint for service-level health checks
+  app.get("/services/health", async (req, res) => {
+    try {
+      const serverList = serverListState.get();
+      const serverNames = Object.keys(serverList);
+
+      // Process all services in parallel for efficiency
+      const serviceChecks = await Promise.all(
+        serverNames.map((name) => checkServiceHealth(name, serverList))
+      );
+
+      // Calculate summary stats
+      const healthy = serviceChecks.filter((s) => s.healthy).length;
+      const unhealthy = serviceChecks.length - healthy;
+
+      res.json({
+        timestamp: new Date().toISOString(),
+        summary: {
+          total: serviceChecks.length,
+          healthy,
+          unhealthy,
+          healthyPercentage:
+            serviceChecks.length > 0
+              ? Math.round((healthy / serviceChecks.length) * 100)
+              : 100,
+        },
+        services: serviceChecks,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        status: "error",
+        message: "Service health check failed",
+        error: error.message,
+      });
+    }
+  });
+
+  // Add detailed status page endpoint
+  app.get("/status", async (req, res) => {
+    try {
+      const serverList = serverListState.get();
+      const requiredServers = getRequiredServers();
+
+      // Use enhanced check for required servers
+      const requiredCheck = await checkRequiredServers(
+        requiredServers,
+        serverList
+      );
+
+      // Check nginx configuration
+      const nginxConfig = await checkNginxConfig();
+
+      // Overall status determination
+      let overallStatus = "healthy";
+
+      if (!requiredCheck.healthy || !nginxConfig.valid) {
+        overallStatus = "critical";
+      } else if (requiredCheck.services.some((s) => !s.healthy)) {
+        overallStatus = "degraded";
+      }
+
+      res.json({
+        timestamp: new Date().toISOString(),
+        status: overallStatus,
+        components: {
+          requiredServers: {
+            status: requiredCheck.healthy ? "healthy" : "critical",
+            available: requiredCheck.available,
+            total: requiredCheck.total,
+            missing: requiredCheck.missing,
+          },
+          nginx: {
+            status: nginxConfig.valid ? "healthy" : "critical",
+            error: nginxConfig.error,
+          },
+        },
+        services: requiredCheck.services.map((s) => ({
+          name: s.serviceName,
+          status: s.healthy ? "healthy" : "unhealthy",
+          containers: {
+            total: s.containers.length,
+            healthy: s.containers.filter((c) => c.healthy).length,
+            unhealthy: s.containers.filter((c) => !c.healthy).length,
+          },
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        status: "error",
+        message: "Status check failed",
         error: error.message,
       });
     }

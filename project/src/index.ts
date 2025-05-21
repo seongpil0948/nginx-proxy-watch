@@ -2,7 +2,7 @@
 import _ from "lodash";
 import { logger } from "./util";
 
-import { docker, MONITORED_EVENTS } from "./config";
+import { docker, loadEnv, MONITORED_EVENTS } from "./config";
 import { scheduleHealthCheck } from "./health";
 import { initWatch } from "./watch";
 import { dockerEventHandler } from "./event-handler";
@@ -12,6 +12,7 @@ import { startApiServer } from "./api-server"; // 추가된 import
 async function main() {
   try {
     logger.info("Docker 모니터링 서비스 시작");
+    loadEnv();
     await initWatch();
 
     // 다양한 Docker 이벤트 감시 설정

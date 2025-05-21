@@ -1,5 +1,16 @@
 import { ITemplates } from "@interfaces/watcher";
 import Dockerode from "dockerode";
+import fs from "fs";
+import dotenv from "dotenv";
+
+// 환경변수 파일 로드 (파일이 존재하는 경우에만)
+const envPath = "/etc/nginx/.env";
+export const loadEnv = () => {
+  if (fs.existsSync(envPath)) {
+    console.log(`환경변수 파일 로드: ${envPath}`);
+    dotenv.config({ path: envPath });
+  }
+};
 
 export const docker = new Dockerode({ socketPath: "/var/run/docker.sock" });
 export const NGINX_CONF_DIR = "/app/conf.d";

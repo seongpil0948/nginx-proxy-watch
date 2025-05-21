@@ -76,20 +76,40 @@ interface HealthCheckResult {
 export const getRequiredServers = (): string[] => {
   const requiredServersEnv = process.env.REQUIRED_SERVERS || "";
   if (!requiredServersEnv) {
+    logger.debug(`No required servers specified in environment variable`, {
+      operation: "getRequiredServers",
+    });
     return [];
   }
-
-  // Parse comma-separated list of required servers
+  logger.debug(`Parsing required servers from environment variable`, {
+    operation: "getRequiredServers",
+    requiredServersEnv,
+  });
   return requiredServersEnv
     .split(",")
     .map((server) => server.trim())
     .filter((server) => server.length > 0);
 };
 
+// project/src/health-checker.ts (일부 코드만 표시)
+
 /**
- * Check if a container is healthy based on Docker health check
- * @param containerId - Docker container ID
- * @returns Promise with container health status
+ * Service health status with container details
+ */
+interface ServiceHealth {
+  serviceName: string;
+  healthy: boolean;
+  containers: Array<{
+    id: string;
+    healthy: boolean;
+    status: string;
+    error?: string;
+  }>;
+  lastChecked: string;
+}
+
+/**
+ * Enhanced container health check with deep inspection
  */
 export const checkContainerHealth = async (
   containerId: string
@@ -115,7 +135,6 @@ export const checkContainerHealth = async (
     // Extract container details
     const name = info.Name;
     const status = info.State.Status;
-    console.log(`CNAME: ${name}  CID: ${info.Id} Status: ${status}`);
     const exitCode = info.State.ExitCode;
     const startedAt = info.State.StartedAt;
     const restarts = info.RestartCount || 0;
@@ -132,24 +151,37 @@ export const checkContainerHealth = async (
     if (healthStatus) {
       healthy = healthStatus === "healthy";
 
-      if (!healthy && healthLog && healthLog.length > 0) {
+      // Important: Also check for 'starting' state - not yet healthy
+      if (healthStatus === "starting") {
+        healthy = false;
+        error = "Container health check in progress";
+      } else if (!healthy && healthLog && healthLog.length > 0) {
         const latestLog = healthLog[healthLog.length - 1];
-        error = latestLog.Output.trim();
+        error = latestLog.Output?.trim() || "Unhealthy container";
       }
     } else if (status !== "running") {
       // Container is not running and has no health check
       healthy = false;
 
       if (status === "exited") {
-        if (exitCode !== 0) {
-          error = `Container exited with code ${exitCode}`;
-        } else {
-          error = "Container exited";
-        }
+        error = `Container exited with code ${exitCode}`;
+      } else if (status === "restarting") {
+        error = "Container is restarting";
       } else {
         error = `Container status: ${status}`;
       }
     }
+
+    // Enhanced logging for health status changes
+    logger.debug(`Container ${containerId} health check result`, {
+      operation: "checkContainerHealth",
+      containerId,
+      name,
+      status,
+      healthStatus,
+      healthy,
+      error,
+    });
 
     // Return comprehensive health information
     return {
@@ -165,7 +197,7 @@ export const checkContainerHealth = async (
             status: healthStatus,
             failingStreak,
             log: healthLog?.map(({ Output, ExitCode, End }) => ({
-              output: Output.trim(),
+              output: Output?.trim() || "",
               exitCode: ExitCode,
               timestamp: End,
             })),
@@ -187,13 +219,69 @@ export const checkContainerHealth = async (
   }
 };
 
-// project/src/health-checker.ts
+/**
+ * Check health of a service by examining all its containers
+ * @param serverName - Name of the service to check
+ * @param serverList - Current server configuration
+ * @returns Service health status
+ */
+export const checkServiceHealth = async (
+  serverName: string,
+  serverList: Record<string, IContainerStatusItem>
+): Promise<ServiceHealth> => {
+  const server = serverList[serverName];
+
+  if (!server) {
+    return {
+      serviceName: serverName,
+      healthy: false,
+      containers: [],
+      lastChecked: new Date().toISOString(),
+    };
+  }
+
+  const containerResults = [];
+  let serviceHealthy = false;
+
+  // Check each container for this service
+  for (const network of server.network) {
+    if (!network.dockerId) continue;
+
+    try {
+      const containerHealth = await checkContainerHealth(network.dockerId);
+      containerResults.push({
+        id: network.dockerId,
+        healthy: containerHealth.healthy,
+        status: containerHealth.status,
+        error: containerHealth.error,
+      });
+
+      // If at least one container is healthy, service is considered healthy
+      if (containerHealth.healthy) {
+        serviceHealthy = true;
+      }
+    } catch (error: any) {
+      containerResults.push({
+        id: network.dockerId,
+        healthy: false,
+        status: "error",
+        error: error.message,
+      });
+    }
+  }
+
+  // If no containers found or all unhealthy, service is unhealthy
+  return {
+    serviceName: serverName,
+    // Service is healthy only if at least one container is healthy
+    healthy: serviceHealthy && containerResults.length > 0,
+    containers: containerResults,
+    lastChecked: new Date().toISOString(),
+  };
+};
 
 /**
- * Enhanced required servers check with container existence verification
- * @param requiredServers - List of required server names
- * @param serverList - Current server list
- * @returns Promise with detailed check results
+ * Improved required servers check that verifies each service's health
  */
 export const checkRequiredServers = async (
   requiredServers: string[],
@@ -203,118 +291,42 @@ export const checkRequiredServers = async (
   total: number;
   available: number;
   missing: string[];
-  unhealthyContainers: Array<{
-    serverName: string;
-    containerId: string;
-    status: string;
-    reason: string;
-  }>;
+  services: ServiceHealth[];
 }> => {
   if (requiredServers.length === 0) {
+    logger.debug(`No required servers to check`, {
+      operation: "checkRequiredServers",
+    });
     return {
       healthy: true,
       total: 0,
       available: 0,
       missing: [],
-      unhealthyContainers: [],
+      services: [],
     };
   }
 
-  const serverNames = new Set(Object.keys(serverList));
-  const missing: string[] = [];
-  const unhealthyContainers: Array<{
-    serverName: string;
-    containerId: string;
-    status: string;
-    reason: string;
-  }> = [];
+  const serviceResults = [];
+  const missing = [];
 
-  // Find missing required servers by name
-  for (const server of requiredServers) {
-    if (!serverNames.has(server)) {
-      missing.push(server);
-      logger.warn(`Required server missing: ${server}`, {
+  // Check each required service
+  for (const serverName of requiredServers) {
+    const serviceHealth = await checkServiceHealth(serverName, serverList);
+    serviceResults.push(serviceHealth);
+
+    // If service is not healthy, add to missing list
+    if (!serviceHealth.healthy) {
+      missing.push(serverName);
+      logger.warn(`Required server unhealthy: ${serverName}`, {
         operation: "checkRequiredServers",
-        server,
+        serviceName: serverName,
+        containers: serviceHealth.containers.length,
+        details: serviceHealth.containers,
       });
-      continue; // Skip to next server since this one is missing
-    }
-
-    // Check containers for this server
-    const serverConfig = serverList[server];
-
-    // Check if server has any network entries
-    if (!serverConfig.network || serverConfig.network.length === 0) {
-      missing.push(server);
-      logger.warn(`Required server has no network entries: ${server}`, {
-        operation: "checkRequiredServers",
-        server,
-      });
-      continue; // Skip to next server
-    }
-
-    // Check each container for this server
-    let hasValidContainer = false;
-
-    for (const network of serverConfig.network) {
-      // Skip entries without container ID
-      if (!network.dockerId) continue;
-
-      try {
-        // Check container exists and is healthy
-        const containerHealth = await checkContainerHealth(network.dockerId);
-
-        if (containerHealth.healthy) {
-          hasValidContainer = true;
-          // Found a healthy container, no need to check others
-          break;
-        } else {
-          // Track unhealthy container
-          unhealthyContainers.push({
-            serverName: server,
-            containerId: network.dockerId,
-            status: containerHealth.status,
-            reason:
-              containerHealth.error ||
-              `Container unhealthy: ${containerHealth.status}`,
-          });
-
-          logger.warn(
-            `Required server container unhealthy: ${server} (${network.dockerId})`,
-            {
-              operation: "checkRequiredServers",
-              server,
-              containerId: network.dockerId,
-              status: containerHealth.status,
-              error: containerHealth.error,
-            }
-          );
-        }
-      } catch (error: any) {
-        logger.error(`Error checking container health: ${network.dockerId}`, {
-          operation: "checkRequiredServers",
-          server,
-          containerId: network.dockerId,
-          error: error.message,
-        });
-
-        // Track error as unhealthy container
-        unhealthyContainers.push({
-          serverName: server,
-          containerId: network.dockerId,
-          status: "error",
-          reason: `Error checking container: ${error.message}`,
-        });
-      }
-    }
-
-    // If no valid container found for this server, mark as missing
-    if (!hasValidContainer) {
-      missing.push(server);
     }
   }
 
-  // Final health status calculation
+  // Calculate summary
   const available = requiredServers.length - missing.length;
   const healthy = missing.length === 0;
 
@@ -323,7 +335,7 @@ export const checkRequiredServers = async (
     total: requiredServers.length,
     available,
     missing,
-    unhealthyContainers,
+    services: serviceResults,
   };
 };
 

@@ -1,4 +1,5 @@
 // project/src/health.ts
+
 import {
   collectContainerStats,
   calculateCpuUsage,
@@ -9,8 +10,8 @@ import { serverListState } from "./state";
 import { processContainerConfig } from "./util/container-config";
 import { makeFiles } from "./util/make";
 import { runningTargetContainers } from "./util/container-management";
+import { checkRequiredServers, getRequiredServers } from "./health-checker";
 
-// 컨테이너 헬스체크 함수 개선
 const containerHealthCheck = async (): Promise<void> => {
   try {
     // 1. 타겟 컨테이너(VIRTUAL_HOST 설정된) 목록 가져오기
@@ -84,7 +85,28 @@ const containerHealthCheck = async (): Promise<void> => {
       }
     }
 
-    // 5. 기존 컨테이너 상태 체크 (원래 기능 유지)
+    // 5. 필수 서버 건강 상태 확인 (새로 추가)
+    const requiredServers = getRequiredServers();
+    if (requiredServers.length > 0) {
+      const healthStatus = await checkRequiredServers(
+        requiredServers,
+        currentServerList
+      );
+
+      if (!healthStatus.healthy) {
+        logger.warn(`필수 서버 건강 상태 이상 감지`, {
+          operation: "requiredServerHealthCheck",
+          missing: healthStatus.missing,
+          available: healthStatus.available,
+          total: healthStatus.total,
+        });
+
+        // 필수 서버 상태가 변경되면 설정 갱신 고려
+        // 여기서 추가 조치를 취할 수 있음
+      }
+    }
+
+    // 6. 기존 컨테이너 상태 체크 (원래 기능 유지)
     for (const { container } of targetContainers) {
       try {
         const stats = await collectContainerStats(container.Id);
@@ -106,9 +128,9 @@ const containerHealthCheck = async (): Promise<void> => {
   }
 };
 
-// 주기적인 컨테이너 헬스체크 설정
+// 주기적인 컨테이너 헬스체크 설정 (간격 단축)
 export const scheduleHealthCheck = (
-  intervalSeconds: number
+  intervalSeconds: number = 5 // 기본값을 5초로 단축
 ): NodeJS.Timeout => {
   logger.info(
     `${intervalSeconds}초 간격으로 컨테이너 헬스체크 및 설정 검증 스케줄링`
