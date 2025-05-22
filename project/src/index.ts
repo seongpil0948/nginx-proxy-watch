@@ -25,7 +25,7 @@ async function main() {
     });
 
     // 기존 헬스체크 스케줄링
-    scheduleHealthCheck(1);
+    scheduleHealthCheck(10);
 
     // API 서버 시작 (추가됨)
     const apiPort = process.env.API_PORT
