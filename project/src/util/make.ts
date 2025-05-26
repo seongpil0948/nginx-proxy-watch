@@ -14,30 +14,76 @@ import { logger } from "./logging";
  * @returns True if valid network entries found
  */
 const hasValidNetworkEntries = (
-  networkEntries: Array<{ ip?: string }>
+  networkEntries: Array<{ ip?: string; dockerId?: string }>
 ): boolean => {
   if (!networkEntries || networkEntries.length === 0) {
     return false;
   }
 
-  // 모든 네트워크 엔트리의 IP 주소 유효성 검사
+  // Check if at least one network entry has valid IP address
   return networkEntries.some((entry) => {
     if (!entry.ip) return false;
 
-    // ":포트번호" 패턴 확인
+    // Validate "IP:PORT" pattern
     const parts = entry.ip.split(":");
-    return parts.length === 2 && parts[0] && parts[0] !== "";
+    if (parts.length !== 2) return false;
+
+    const [ip, port] = parts;
+    if (!ip || ip.trim() === "" || !port || port.trim() === "") return false;
+
+    // Basic IP validation (IPv4)
+    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipPattern.test(ip.trim())) return false;
+
+    // Port validation
+    const portNum = parseInt(port.trim(), 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) return false;
+
+    return true;
   });
 };
 
-// makeUpstream 함수 수정
+/**
+ * Filter out invalid network entries
+ * @param networkEntries - Network entries to filter
+ * @returns Filtered network entries with valid IPs only
+ */
+const filterValidNetworkEntries = (
+  networkEntries: Array<{ ip?: string; dockerId?: string }>
+): Array<{ ip?: string; dockerId?: string }> => {
+  return networkEntries.filter((entry) => {
+    if (!entry.ip) return false;
+
+    const parts = entry.ip.split(":");
+    if (parts.length !== 2) return false;
+
+    const [ip, port] = parts;
+    if (!ip || ip.trim() === "" || !port || port.trim() === "") return false;
+
+    // Basic IP validation (IPv4)
+    const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+    if (!ipPattern.test(ip.trim())) return false;
+
+    // Port validation
+    const portNum = parseInt(port.trim(), 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) return false;
+
+    return true;
+  });
+};
+
+// makeUpstream function with improved validation
 const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
-  logger.debug(`Upstream 설정 생성 시작`, { conItem });
+  logger.debug(`Upstream configuration generation started`, { conItem });
+
   if (!conItem.serverName) {
-    logger.warn("serverName 없는 컨테이너 항목, Upstream 생성 건너뜀", {
-      operation: "makeUpstream",
-      containerData: conItem,
-    });
+    logger.warn(
+      "Container item without serverName, skipping Upstream generation",
+      {
+        operation: "makeUpstream",
+        containerData: conItem,
+      }
+    );
     return;
   }
 
@@ -45,51 +91,64 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
   const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
 
   try {
-    // 유효한 네트워크 정보가 있는지 검증
-    if (conItem.network.length > 0 && hasValidNetworkEntries(conItem.network)) {
-      logger.debug(`Upstream 설정 생성 시작`, {
+    // Filter valid network entries
+    const validNetworkEntries = filterValidNetworkEntries(conItem.network);
+
+    if (validNetworkEntries.length > 0) {
+      logger.debug(`Creating Upstream configuration`, {
         operation: "makeUpstream",
         serverName: conItem.serverName,
         configPath,
+        validEntries: validNetworkEntries.length,
+        totalEntries: conItem.network.length,
       });
 
-      // EJS 렌더링
+      // Create container item with filtered network entries for EJS rendering
+      const filteredConItem = {
+        ...conItem,
+        network: validNetworkEntries,
+      };
+
+      // EJS rendering
       const rendered = await new Promise<string>((resolve, reject) => {
-        ejs.renderFile(templates.upstream.PATH, conItem, {}, (err, str) => {
-          if (err) reject(err);
-          else resolve(str);
-        });
-      });
-
-      // 파일 쓰기
-      writeFileSync(configPath, rendered);
-      logger.nginxConfig("생성", configPath, {
-        serverName: conItem.serverName,
-        type: "upstream",
-      });
-    } else {
-      // 네트워크 정보가 유효하지 않은 경우 - 로그 상세화
-      if (conItem.network.length > 0) {
-        logger.warn(`유효하지 않은 네트워크 정보, Upstream 생성 건너뜀`, {
-          operation: "makeUpstream",
-          serverName: conItem.serverName,
-          network: conItem.network,
-        });
-      }
-
-      // 기존 설정 파일 제거 처리
-      if (existsSync(configPath)) {
-        logger.info(
-          `유효하지 않은 네트워크 정보, Upstream 설정 파일 제거 시도`,
-          {
-            operation: "makeUpstream",
-            serverName: conItem.serverName,
-            configPath,
+        ejs.renderFile(
+          templates.upstream.PATH,
+          filteredConItem,
+          {},
+          (err, str) => {
+            if (err) reject(err);
+            else resolve(str);
           }
         );
+      });
+
+      // Write configuration file
+      writeFileSync(configPath, rendered);
+      logger.nginxConfig("created", configPath, {
+        serverName: conItem.serverName,
+        type: "upstream",
+        validServers: validNetworkEntries.length,
+      });
+    } else {
+      // No valid network entries - remove existing configuration
+      logger.warn(
+        `No valid network entries found, removing Upstream configuration`,
+        {
+          operation: "makeUpstream",
+          serverName: conItem.serverName,
+          totalEntries: conItem.network.length,
+        }
+      );
+
+      if (existsSync(configPath)) {
+        logger.info(`Removing invalid Upstream configuration file`, {
+          operation: "makeUpstream",
+          serverName: conItem.serverName,
+          configPath,
+        });
         unlink(configPath, (err) => {
           if (err) {
-            logger.error(`Upstream 설정 파일 삭제 실패`, {
+            logger.error(`Failed to delete Upstream configuration file`, {
               operation: "makeUpstream_delete",
               serverName: conItem.serverName,
               configPath,
@@ -97,32 +156,35 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
               stack: err.stack,
             });
           } else {
-            logger.nginxConfig("삭제", configPath, {
+            logger.nginxConfig("deleted", configPath, {
               serverName: conItem.serverName,
               type: "upstream",
-              reason: "Invalid network",
+              reason: "No valid network entries",
             });
           }
         });
       } else {
-        logger.debug(`Upstream 설정 파일 없음, 삭제 건너뜀`, {
-          operation: "makeUpstream",
-          serverName: conItem.serverName,
-          configPath,
-        });
+        logger.debug(
+          `Upstream configuration file does not exist, skipping deletion`,
+          {
+            operation: "makeUpstream",
+            serverName: conItem.serverName,
+            configPath,
+          }
+        );
       }
     }
 
-    // Nginx 로그 디렉토리 생성
+    // Create Nginx log directory
     if (!existsSync(nginxLogPath)) {
       mkdirSync(nginxLogPath, { recursive: true });
-      logger.debug(`Nginx 로그 디렉토리 생성`, {
+      logger.debug(`Created Nginx log directory`, {
         operation: "makeUpstream_logdir",
         path: nginxLogPath,
       });
     }
   } catch (error: any) {
-    logger.error(`Upstream 설정 처리 중 오류`, {
+    logger.error(`Error during Upstream configuration processing`, {
       operation: "makeUpstream",
       serverName: conItem.serverName,
       configPath,

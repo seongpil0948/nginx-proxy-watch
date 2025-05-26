@@ -11,19 +11,124 @@ import { processContainerConfig } from "./util/container-config";
 import { makeFiles } from "./util/make";
 import { runningTargetContainers } from "./util/container-management";
 import { checkRequiredServers, getRequiredServers } from "./health-checker";
+import { docker } from "./config";
+
+/**
+ * Check if container exists and is accessible
+ * @param containerId - Container ID to check
+ * @returns Promise<boolean> - True if container exists and is accessible
+ */
+const containerExists = async (containerId: string): Promise<boolean> => {
+  try {
+    const container = docker.getContainer(containerId);
+    await container.inspect();
+    return true;
+  } catch (error: any) {
+    if (error.statusCode === 404) {
+      logger.debug(`Container not found: ${containerId}`, {
+        operation: "containerExists",
+        containerId,
+      });
+      return false;
+    }
+    logger.warn(`Error checking container existence: ${containerId}`, {
+      operation: "containerExists",
+      containerId,
+      error: error.message,
+    });
+    return false;
+  }
+};
+
+/**
+ * Clean up non-existent containers from server state
+ */
+const cleanupNonExistentContainers = async (): Promise<void> => {
+  const serverList = serverListState.get();
+  const containerIdsToCheck = new Set<string>();
+
+  // Collect all container IDs from server state
+  Object.values(serverList).forEach((server) => {
+    server.network.forEach((network) => {
+      if (network.dockerId) {
+        containerIdsToCheck.add(network.dockerId);
+      }
+    });
+  });
+
+  if (containerIdsToCheck.size === 0) {
+    return;
+  }
+
+  logger.debug(
+    `Checking existence of ${containerIdsToCheck.size} containers in state`,
+    {
+      operation: "cleanupNonExistentContainers",
+      containerCount: containerIdsToCheck.size,
+    }
+  );
+
+  // Check each container and remove non-existent ones
+  const nonExistentContainers: string[] = [];
+  const existenceChecks = Array.from(containerIdsToCheck).map(
+    async (containerId) => {
+      const exists = await containerExists(containerId);
+      if (!exists) {
+        nonExistentContainers.push(containerId);
+      }
+      return { containerId, exists };
+    }
+  );
+
+  try {
+    await Promise.all(existenceChecks);
+
+    // Remove non-existent containers from state
+    if (nonExistentContainers.length > 0) {
+      logger.info(
+        `Removing ${nonExistentContainers.length} non-existent containers from state`,
+        {
+          operation: "cleanupNonExistentContainers",
+          removedContainers: nonExistentContainers,
+        }
+      );
+
+      nonExistentContainers.forEach((containerId) => {
+        serverListState.del(containerId);
+      });
+
+      // Clean up empty servers
+      serverListState.cleanup();
+    }
+  } catch (error: any) {
+    logger.error(`Error during container cleanup`, {
+      operation: "cleanupNonExistentContainers",
+      error: error.message,
+    });
+  }
+};
 
 const containerHealthCheck = async (): Promise<void> => {
   try {
-    // 1. 타겟 컨테이너(VIRTUAL_HOST 설정된) 목록 가져오기
+    // First, clean up non-existent containers from state
+    await cleanupNonExistentContainers();
+
+    // Get target containers (VIRTUAL_HOST configured containers)
     const targetContainers = await runningTargetContainers();
 
-    logger.info(`헬스체크: ${targetContainers.length}개 타겟 컨테이너 발견`);
+    logger.info(
+      `Health check: Found ${targetContainers.length} target containers`,
+      {
+        operation: "containerHealthCheck",
+        targetContainerCount: targetContainers.length,
+      }
+    );
 
-    // 2. serverListState에서 현재 관리 중인 서버 목록 가져오기
+    // Get current server list managed by the state
     const currentServerList = serverListState.get();
-    const managedContainerIds = new Set();
+    const managedContainerIds = new Set<string>();
 
-    // 현재 관리 중인 컨테이너 ID 수집
+    // Collect currently managed container IDs
     Object.values(currentServerList).forEach((server) => {
       server.network.forEach((network) => {
         if (network.dockerId) {
@@ -32,17 +137,17 @@ const containerHealthCheck = async (): Promise<void> => {
       });
     });
 
-    // 3. 누락된 컨테이너 식별 및 처리
+    // Identify missing containers and process them
     const missingContainers = [];
     let configUpdateNeeded = false;
 
     for (const { container, info, env } of targetContainers) {
-      // 이미 관리 중인 컨테이너는 건너뛰기
+      // Skip containers already managed
       if (managedContainerIds.has(container.Id)) {
         continue;
       }
 
-      // 컨테이너 설정 생성 및 추가
+      // Process container configuration and add it
       const containerConfig = processContainerConfig(container.Id, info, env);
       if (containerConfig) {
         missingContainers.push({
@@ -51,23 +156,26 @@ const containerHealthCheck = async (): Promise<void> => {
           config: containerConfig,
         });
 
-        // serverListState에 추가
+        // Add to server state
         serverListState.set(containerConfig);
         configUpdateNeeded = true;
 
-        logger.warn(`누락된 컨테이너 감지 및 복구: ${container.Id}`, {
-          operation: "containerHealthCheck",
-          containerId: container.Id,
-          containerName: info.Name,
-          virtualHost: env.host,
-        });
+        logger.warn(
+          `Detected and recovered missing container: ${container.Id}`,
+          {
+            operation: "containerHealthCheck",
+            containerId: container.Id,
+            containerName: info.Name,
+            virtualHost: env.host,
+          }
+        );
       }
     }
 
-    // 4. 누락된 컨테이너가 있으면 nginx 설정 업데이트
+    // Update nginx configuration if missing containers were found
     if (configUpdateNeeded) {
       logger.info(
-        `${missingContainers.length}개의 누락된 컨테이너 발견, nginx 설정 업데이트 시작`,
+        `Found ${missingContainers.length} missing containers, updating nginx configuration`,
         {
           operation: "containerHealthCheck_update",
           missingContainers: missingContainers.map((c) => ({
@@ -79,13 +187,16 @@ const containerHealthCheck = async (): Promise<void> => {
 
       try {
         await makeFiles();
-        logger.info("누락된 컨테이너에 대한 nginx 설정 업데이트 완료");
-      } catch (error) {
-        logger.error(`nginx 설정 업데이트 실패: ${error}`);
+        logger.info("Nginx configuration updated for missing containers");
+      } catch (error: any) {
+        logger.error(`Failed to update nginx configuration: ${error.message}`, {
+          operation: "containerHealthCheck_makeFiles",
+          error: error.message,
+        });
       }
     }
 
-    // 5. 필수 서버 건강 상태 확인 (새로 추가)
+    // Check required server health status
     const requiredServers = getRequiredServers();
     if (requiredServers.length > 0) {
       const healthStatus = await checkRequiredServers(
@@ -94,46 +205,64 @@ const containerHealthCheck = async (): Promise<void> => {
       );
 
       if (!healthStatus.healthy) {
-        logger.warn(`필수 서버 건강 상태 이상 감지`, {
+        logger.warn(`Required server health check failed`, {
           operation: "requiredServerHealthCheck",
           missing: healthStatus.missing,
           available: healthStatus.available,
           total: healthStatus.total,
         });
-
-        // 필수 서버 상태가 변경되면 설정 갱신 고려
-        // 여기서 추가 조치를 취할 수 있음
       }
     }
 
-    // 6. 기존 컨테이너 상태 체크 (원래 기능 유지)
+    // Collect container statistics for existing containers only
+    const stats = serverListState.getStats();
+    logger.debug(`Server state statistics`, {
+      operation: "containerHealthCheck_stats",
+      ...stats,
+    });
+
+    // Only collect stats for containers that actually exist
     for (const { container } of targetContainers) {
       try {
-        const stats = await collectContainerStats(container.Id);
-        const cpuUsage = calculateCpuUsage(stats);
-        const memoryUsage = calculateMemoryUsage(stats);
+        const exists = await containerExists(container.Id);
+        if (exists) {
+          const stats = await collectContainerStats(container.Id);
+          const cpuUsage = calculateCpuUsage(stats);
+          const memoryUsage = calculateMemoryUsage(stats);
 
-        logger.debug(`컨테이너 ${container.Id} 상태:`, {
-          name: container.Names[0],
-          image: container.Image,
-          cpuPercent: cpuUsage.toFixed(2) + "%",
-          memoryPercent: memoryUsage.toFixed(2) + "%",
-        });
-      } catch (error) {
-        logger.warn(`컨테이너 ${container.Id} 상태 확인 실패: ${error}`);
+          logger.debug(`Container ${container.Id} stats:`, {
+            operation: "containerHealthCheck_stats",
+            name: container.Names[0],
+            image: container.Image,
+            cpuPercent: cpuUsage.toFixed(2) + "%",
+            memoryPercent: memoryUsage.toFixed(2) + "%",
+          });
+        }
+      } catch (error: any) {
+        // Only log as warning since container might have been removed during check
+        logger.warn(
+          `Failed to collect stats for container ${container.Id}: ${error.message}`,
+          {
+            operation: "containerHealthCheck_stats",
+            containerId: container.Id,
+          }
+        );
       }
     }
-  } catch (error) {
-    logger.error(`헬스체크 실패: ${error}`);
+  } catch (error: any) {
+    logger.error(`Health check failed: ${error.message}`, {
+      operation: "containerHealthCheck",
+      error: error.message,
+    });
   }
 };
 
-// 주기적인 컨테이너 헬스체크 설정 (간격 단축)
+// Schedule periodic container health check and configuration verification
 export const scheduleHealthCheck = (
-  intervalSeconds: number = 5 // 기본값을 5초로 단축
+  intervalSeconds: number = 5 // Default to 5 seconds interval
 ): NodeJS.Timeout => {
   logger.info(
-    `${intervalSeconds}초 간격으로 컨테이너 헬스체크 및 설정 검증 스케줄링`
+    `Scheduling container health check and configuration verification every ${intervalSeconds} seconds`
   );
   return setInterval(containerHealthCheck, intervalSeconds * 1000);
 };

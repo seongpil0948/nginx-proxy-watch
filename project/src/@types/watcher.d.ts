@@ -54,10 +54,19 @@ export interface IContainersStatus {
   [key: string]: IContainerStatusItem;
 }
 
+export interface IServerListStats {
+  totalServers: number;
+  totalNetworkEntries: number;
+  validNetworkEntries: number;
+  invalidNetworkEntries: number;
+}
+
 export interface IServerList {
   set: (containerItem: IContainerStatusItem) => void;
   get: () => IContainersStatus;
   del: (dockerId: string) => void;
+  cleanup: () => void; // New method for cleaning up empty servers
+  getStats: () => IServerListStats; // New method for getting statistics
 }
 
 export interface IServerListInstance {

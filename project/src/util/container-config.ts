@@ -7,6 +7,31 @@ import { logger } from "./logging";
 import { extractContainerIP } from "./container";
 
 /**
+ * Validate IP:PORT format
+ * @param ipPort - IP:PORT string to validate
+ * @returns True if valid format
+ */
+function validateIpPort(ipPort: string): boolean {
+  if (!ipPort || typeof ipPort !== "string") return false;
+
+  const parts = ipPort.split(":");
+  if (parts.length !== 2) return false;
+
+  const [ip, port] = parts;
+  if (!ip || ip.trim() === "" || !port || port.trim() === "") return false;
+
+  // Basic IPv4 validation
+  const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (!ipPattern.test(ip.trim())) return false;
+
+  // Port validation
+  const portNum = parseInt(port.trim(), 10);
+  if (isNaN(portNum) || portNum < 1 || portNum > 65535) return false;
+
+  return true;
+}
+
+/**
  * Process container information to create server configuration
  * @param containerId - Container ID
  * @param containerInfo - Container inspection information
@@ -21,7 +46,11 @@ export function processContainerConfig(
   // Check if this container should be processed
   if (!env.host) {
     logger.debug(
-      `컨테이너 ${containerId}에 host 환경변수가 없습니다. 무시합니다.`
+      `Container ${containerId} does not have host environment variable. Ignoring.`,
+      {
+        operation: "processContainerConfig",
+        containerId,
+      }
     );
     return null;
   }
@@ -29,6 +58,24 @@ export function processContainerConfig(
   // Extract IP using the improved function
   const ip = extractContainerIP(containerInfo.NetworkSettings);
   const port = env.port || 80;
+
+  // Validate extracted IP and port combination
+  const ipPortString = ip ? `${ip}:${port}` : undefined;
+
+  if (!ipPortString || !validateIpPort(ipPortString)) {
+    logger.warn(`Container ${containerId} has invalid network configuration`, {
+      operation: "processContainerConfig",
+      containerId,
+      extractedIp: ip,
+      port,
+      ipPortString,
+      containerName: containerInfo.Name,
+      virtualHost: env.host,
+    });
+
+    // Still create the configuration but with empty network
+    // This allows the container to be tracked but prevents invalid upstream generation
+  }
 
   // Parse location information
   const locationList = parseLocationList(env.location);
@@ -43,17 +90,33 @@ export function processContainerConfig(
     env.ssl || env.group_host || env.host || ""
   );
 
+  // Create network entry only if IP:PORT is valid
+  const networkEntries = [];
+  if (ipPortString && validateIpPort(ipPortString)) {
+    networkEntries.push({
+      dockerId: containerId,
+      ip: ipPortString,
+    });
+  } else {
+    logger.warn(
+      `Container ${containerId} network entry skipped due to invalid IP:PORT`,
+      {
+        operation: "processContainerConfig",
+        containerId,
+        containerName: containerInfo.Name,
+        virtualHost: env.host,
+        extractedIp: ip,
+        port,
+      }
+    );
+  }
+
   // Create and return container status item
-  return {
+  const containerConfig: IContainerStatusItem = {
     serverName,
     host: env.group_host || env.host || "",
     port: port,
-    network: [
-      {
-        dockerId: containerId,
-        ip: ip ? `${ip}:${port}` : undefined,
-      },
-    ],
+    network: networkEntries,
     isLocation: env.is_location?.toUpperCase(),
     location: locationList,
     sslCert: certPath,
@@ -65,6 +128,16 @@ export function processContainerConfig(
     routingMap: env.routing_map,
     defaultUpstream: env.default_upstream,
   };
+
+  logger.debug(`Container configuration processed`, {
+    operation: "processContainerConfig",
+    containerId,
+    serverName,
+    networkEntries: networkEntries.length,
+    hasValidNetwork: networkEntries.length > 0,
+  });
+
+  return containerConfig;
 }
 
 /**
