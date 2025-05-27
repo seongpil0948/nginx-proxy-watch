@@ -1,180 +1,374 @@
-# Nginx Proxy Watch - 로컬 테스트 환경
+# Nginx Proxy Watch - Enhanced Testing Environment
 
-이 프로젝트는 `nginx-proxy-watch`의 다양한 라우팅 기능을 로컬 환경에서 테스트하기 위한 샘플입니다. nginx-proxy-watch는 Docker 컨테이너 이벤트를 감시하고 Nginx 설정을 자동으로 생성해주는 도구입니다.
+This enhanced testing environment provides comprehensive tools for testing `nginx-proxy-watch` functionality including container lifecycle management, load balancing, health checks, and failure scenarios.
 
-## 지원하는 라우팅 시나리오
+## 🚀 Quick Start
 
-- **기본 Vhost 라우팅**: 특정 호스트 이름으로 들어오는 요청을 지정된 컨테이너로 라우팅
-- **Group Host 라우팅**: 여러 서비스를 하나의 그룹 호스트 아래 경로로 묶어 관리 (권장 방식)
-- **쿠키 기반 라우팅**: 특정 쿠키 값에 따라 요청을 다른 컨테이너로 동적 라우팅
-- **로드 밸런싱**: 동일 서비스의 여러 인스턴스 간 요청 분산
+### Prerequisites
+- Docker and Docker Compose
+- curl and jq (for testing)
+- openssl (for SSL certificate generation)
 
-## 환경변수 가이드
+### Start Test Environment
 
-### 기본 환경변수
+```bash
+# Basic startup
+./example/ignite-example.sh
 
-| 환경변수 | 설명 | 기본값 |
-|---------|------|--------|
-| `VIRTUAL_HOST` | 서비스할 도메인 이름 (필수) | - |
-| `VIRTUAL_PORT` | 컨테이너 내부 서비스 포트 | 80 |
+# With monitoring dashboard
+./example/ignite-example.sh --with-monitoring
 
-### Group Host 관련 환경변수 (권장 방식)
+# Quick test run (skip hosts file check)
+./example/ignite-example.sh --run-tests --skip-hosts
 
-| 환경변수 | 설명 | 예시 |
-|---------|------|------|
-| `VIRTUAL_GROUP_HOST` | 그룹 호스트 도메인 이름 | `group.example.com` |
-| `VIRTUAL_LOCATION_PATH` | 그룹 호스트 내 경로명 | `serviceA` |
-
-### SSL/HTTPS 관련 환경변수
-
-| 환경변수 | 설명 | 예시 |
-|---------|------|------|
-| `VIRTUAL_SSL` | SSL 인증서 이름 | `example.com` |
-| `VIRTUAL_CERT` | 인증서 타입 | `crt` 또는 `pem` |
-
-### 쿠키 라우팅 관련 환경변수
-
-| 환경변수 | 설명 | 예시 |
-|---------|------|------|
-| `VIRTUAL_COOKIE_NAME` | 라우팅에 사용할 쿠키 이름 | `user_type` |
-| `VIRTUAL_ROUTING_MAP` | 쿠키 값:업스트림 매핑 | `admin:admin-svc,user:user-svc` |
-| `VIRTUAL_DEFAULT_UPSTREAM` | 쿠키가 없거나 매핑되지 않은 경우 기본 라우팅 대상 | `default-svc` |
-
-## 프로젝트 구조
-
-```
-example/
-├── app-common/              # 모든 테스트 앱이 공유하는 코드
-├── app-main/                # 기본 Vhost 테스트 (/main)
-├── app-api/                 # API 경로 라우팅 테스트 (/api)
-├── app-admin/               # 관리자 경로 라우팅 테스트 (/admin)
-├── app-group-service-a/     # Group Host 테스트 (serviceA)
-├── app-group-service-b/     # Group Host 테스트 (serviceB)
-├── app-cookie-hospital/     # 쿠키 라우팅 테스트 (hospital)
-├── app-cookie-pharmacy/     # 쿠키 라우팅 테스트 (pharmacy)
-├── app-secure/              # SSL/HTTPS 테스트
-├── app-balance/             # 로드 밸런싱 테스트
-├── app-multipath/           # 다중 경로 테스트
-├── docker-compose-sample.yml # Docker Compose 설정 파일
-└── nginx-proxy/            # Nginx 관련 파일들이 마운트될 디렉토리
-    ├── local_certs/        # SSL 인증서 파일
-    └── local_logs/         # 로그 파일
+# See all options
+./example/ignite-example.sh --help
 ```
 
-## 환경변수 사용 예시
+## 🧪 Testing Features
 
-### 1. 기본 Vhost 설정
+### Test Scenarios
+
+Run comprehensive test scenarios to validate nginx-proxy-watch behavior:
+
+```bash
+# Run all test scenarios
+./example/test-scenarios.sh all
+
+# Individual scenarios
+./example/test-scenarios.sh restart        # Container restart testing
+./example/test-scenarios.sh scale          # Container scaling testing
+./example/test-scenarios.sh health         # Health check failure/recovery
+./example/test-scenarios.sh stop-start     # Container stop/start testing
+./example/test-scenarios.sh network        # Network partition simulation
+./example/test-scenarios.sh chaos          # Chaos engineering tests
+```
+
+### Real-time Monitoring
+
+Monitor nginx-proxy-watch performance and behavior:
+
+```bash
+# Live monitoring dashboard
+./example/monitor-test.sh live
+
+# Follow logs in real-time
+./example/monitor-test.sh logs
+
+# Stress testing (30 seconds, 5 concurrent requests)
+./example/monitor-test.sh stress 30 5
+
+# Collect debug information
+./example/monitor-test.sh debug
+
+# Single status check
+./example/monitor-test.sh once
+```
+
+## 🏗️ Test Architecture
+
+### Service Categories
+
+1. **Main Services** - Primary application endpoints
+   - `app-main`: Load-balanced main application
+   - `nginx-proxy`: The nginx-proxy-watch service itself
+
+2. **Group Host Services** - Multiple services under one domain
+   - `app-api`: API service under alpha-main.test.local/api
+   - `app-admin`: Admin service under alpha-main.test.local/admin
+   - `app-group-service-a/b`: Services under group.test.local
+
+3. **Load Balancing** - Multiple instances of same service
+   - `app-balance-1/2`: Load-balanced instances
+
+4. **Cookie Routing** - Dynamic routing based on cookies
+   - `app-cookie-hospital`: Target for mall_type=1
+   - `app-cookie-pharmacy`: Target for mall_type=2 (default)
+
+5. **Multi-path Services** - Complex routing scenarios
+   - `app-multipath-root`: Root service
+   - `app-path1-5`: Path-specific services
+
+6. **Test Utilities**
+   - `app-failure-sim`: Failure simulation service
+   - `otel-collector`: OpenTelemetry metrics collection
+
+### Health Check Integration
+
+All services include:
+- Kubernetes-style health checks
+- Failure simulation endpoints (`/fail-health`, `/restore-health`)
+- Resource usage monitoring
+- Automatic restart policies
+
+## 🔧 Environment Variables
+
+### nginx-proxy-watch Configuration
+
+```bash
+# Core settings
+REQUIRED_SERVERS=alpha-main.test.local,balance.test.local
+LOG_LEVEL=debug
+API_PORT=8080
+
+# Test environment
+TEST_MODE=true
+HEALTH_CHECK_INTERVAL=5
+```
+
+### Service Configuration Examples
+
+#### Basic Service
 ```yaml
 environment:
   - VIRTUAL_HOST=example.com
   - VIRTUAL_PORT=8080
+  - PORT=8080
 ```
 
-### 2. Group Host 라우팅 (권장 방식)
+#### Group Host Service
 ```yaml
 environment:
-  - VIRTUAL_GROUP_HOST=example.com
-  - VIRTUAL_HOST=api-internal
-  - VIRTUAL_PORT=8081
+  - VIRTUAL_GROUP_HOST=main.example.com
+  - VIRTUAL_HOST=api.internal
   - VIRTUAL_LOCATION_PATH=api
+  - VIRTUAL_PORT=8081
 ```
 
-### 3. 쿠키 기반 라우팅
+#### Cookie Routing
 ```yaml
 environment:
   - VIRTUAL_HOST=cookie.example.com
-  - VIRTUAL_PORT=80
-  - VIRTUAL_COOKIE_NAME=mall_type
+  - VIRTUAL_COOKIE_NAME=service_type
   - VIRTUAL_ROUTING_MAP=1:service-a,2:service-b
   - VIRTUAL_DEFAULT_UPSTREAM=service-b
 ```
 
-### 4. 보안 연결(HTTPS)
-```yaml
-environment:
-  - VIRTUAL_HOST=secure.example.com
-  - VIRTUAL_PORT=8087
-  - VIRTUAL_SSL=secure.example.com
-  - VIRTUAL_CERT=pem  # 또는 crt
-```
+## 🧭 Test Scenarios Guide
 
-## hosts 파일 설정 방법
+### 1. Container Lifecycle Testing
 
-로컬 환경에서 테스트하려면 hosts 파일에 테스트 도메인을 추가해야 합니다:
-
-### Windows의 경우:
-1. 관리자 권한으로 메모장 실행
-2. 파일 열기: `C:\Windows\System32\drivers\etc\hosts`
-3. 다음 줄 추가:
-```
-127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
-```
-4. 저장 후 닫기
-
-### macOS/Linux의 경우:
-1. 터미널에서 다음 명령 실행:
+**Restart Testing**
 ```bash
-sudo nano /etc/hosts
+./example/test-scenarios.sh restart
 ```
-2. 다음 줄 추가:
-```
-127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local
-```
-3. Ctrl+O로 저장 후 Ctrl+X로 나가기
+- Restarts containers and verifies configuration reload
+- Tests nginx upstream reconfiguration
+- Validates service continuity
 
-## 환경 실행 방법
-
-1. 필요한 디렉토리 구조 생성:
+**Scaling Testing**
 ```bash
-mkdir -p ./nginx-proxy/local_certs ./nginx-proxy/local_logs/nginx ./nginx-proxy/local_logs/watcher
+./example/test-scenarios.sh scale
+```
+- Scales services up and down
+- Tests load balancer reconfiguration
+- Verifies traffic distribution
+
+### 2. Health Check Testing
+
+**Health Failure Simulation**
+```bash
+./example/test-scenarios.sh health
+```
+- Simulates service health failures
+- Tests automatic failover behavior
+- Verifies health restoration
+
+**Manual Health Control**
+```bash
+# Make service unhealthy
+curl http://alpha-main.test.local/main/fail-health
+
+# Restore health
+curl http://alpha-main.test.local/main/restore-health
 ```
 
-2. SSL 테스트를 위한 자체 서명 인증서 생성 (선택사항):
+### 3. Network Partition Testing
+
+**Network Simulation**
 ```bash
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout ./nginx-proxy/local_certs/secure.test.local_key.pem \
-  -out ./nginx-proxy/local_certs/secure.test.local_crt.pem
+./example/test-scenarios.sh network
+```
+- Simulates network partitions using container pause/unpause
+- Tests service isolation and recovery
+- Validates error handling
+
+### 4. Chaos Engineering
+
+**Chaos Testing**
+```bash
+./example/test-scenarios.sh chaos
+```
+- Randomly restarts multiple services
+- Tests system resilience under stress
+- Validates configuration consistency
+
+## 📊 API Endpoints
+
+### nginx-proxy-watch API (Port 18080)
+
+```bash
+# Overall health status
+curl http://localhost:18080/health
+
+# Detailed status
+curl http://localhost:18080/status
+
+# Container list
+curl http://localhost:18080/containers
+
+# Service health checks
+curl http://localhost:18080/services/health
+
+# Required servers status
+curl http://localhost:18080/required-servers
+
+# Nginx configuration validation
+curl http://localhost:18080/nginx-config
 ```
 
-3. 제공된 스크립트로 환경 실행:
+### Service Health Endpoints
+
+Each service provides:
 ```bash
-./scripts/ignite-example.sh
+# Health check
+curl http://[service-url]/health
+
+# Force unhealthy state
+curl http://[service-url]/fail-health
+
+# Restore healthy state
+curl http://[service-url]/restore-health
 ```
-또는 직접 Docker Compose 명령 실행:
+
+## 🔍 Debugging and Troubleshooting
+
+### Common Issues
+
+**1. Services not responding**
 ```bash
-docker compose -f example/docker-compose-sample.yml up -d --build
+# Check container status
+docker compose -f example/docker-compose-sample.yml ps
+
+# Check nginx configuration
+docker exec nginx-proxy-test nginx -t
+
+# Check upstream configurations
+docker exec nginx-proxy-test ls -la /app/conf.d/upstream.conf/
 ```
 
-4. 브라우저에서 테스트:
-   - 기본 Vhost: http://alpha-main.test.local
-   - 그룹 호스트 API: http://alpha-main.test.local/api
-   - 그룹 호스트 Admin: http://alpha-main.test.local/admin
-   - 그룹 서비스: http://group.test.local/serviceA 및 http://group.test.local/serviceB
-   - 쿠키 라우팅: http://cookie.test.local (쿠키 mall_type=1 또는 mall_type=2 설정)
-   - 보안 연결: https://secure.test.local
-   - 로드 밸런싱: http://balance.test.local (여러 번 새로고침)
-   - 다중 경로: http://multipath.test.local/path1, /path2, .../path5
-
-## 문제 해결
-
-### 로그 확인
+**2. Configuration errors**
 ```bash
-# Nginx 로그 확인
+# View nginx-proxy logs
 docker logs nginx-proxy-test
 
-# 이벤트 감시 로그 확인
-docker exec nginx-proxy-test cat /var/log/docker-event-watcher/daemon.log
-docker exec nginx-proxy-test cat /var/log/docker-event-watcher/error.log
+# Check watcher logs
+docker exec nginx-proxy-test tail -f /var/log/docker-event-watcher/error.log
+
+# Debug information
+./example/monitor-test.sh debug
 ```
 
-### 설정 확인
+**3. Network connectivity issues**
 ```bash
-# 생성된 upstream 설정 확인
-docker exec nginx-proxy-test ls -la /app/conf.d/upstream.conf/
+# Test from inside nginx container
+docker exec nginx-proxy-test curl http://app-main:8080/main/health
 
-# 생성된 vhost 설정 확인
-docker exec nginx-proxy-test ls -la /app/conf.d/vhost.conf/
-
-# 설정 내용 확인 (예: alpha-main.test.local)
-docker exec nginx-proxy-test cat /app/conf.d/vhost.conf/vhost-alpha-main.test.local.conf
+# Check container networking
+docker network inspect example_test-network
 ```
+
+### Log Locations
+
+```bash
+# nginx-proxy-watch logs
+/var/log/docker-event-watcher/daemon.log    # Main application logs
+/var/log/docker-event-watcher/error.log     # Error logs
+/var/log/docker-event-watcher/debug.log     # Debug logs
+
+# Nginx logs
+/var/log/nginx/access.log                   # Access logs
+/var/log/nginx/error.log                    # Nginx error logs
+/var/log/nginx/[service]/access-was.log     # Service-specific logs
+```
+
+## 🎯 Performance Testing
+
+### Load Testing
+
+```bash
+# Basic load test
+./example/monitor-test.sh stress 60 10
+
+# Custom load test
+for i in {1..100}; do
+  curl -s http://balance.test.local > /dev/null &
+done
+wait
+```
+
+### Monitoring During Tests
+
+```bash
+# Live monitoring
+./example/monitor-test.sh live
+
+# Resource usage
+docker stats
+
+# Configuration changes
+watch -n 2 'docker exec nginx-proxy-test find /app/conf.d/ -name "*.conf" -mmin -1'
+```
+
+## 🧹 Cleanup
+
+### Graceful Shutdown
+```bash
+# Stop services
+docker compose -f example/docker-compose-sample.yml down
+
+# Full cleanup with volumes
+docker compose -f example/docker-compose-sample.yml down -v --remove-orphans
+
+# Remove test images
+docker image prune -f
+```
+
+### Reset Environment
+```bash
+# Remove all containers and start fresh
+docker compose -f example/docker-compose-sample.yml down -v --remove-orphans
+./example/ignite-example.sh --skip-hosts
+```
+
+## 🤝 Contributing Test Cases
+
+### Adding New Test Scenarios
+
+1. **Create test service** in docker-compose-sample.yml
+2. **Add scenario function** to test-scenarios.sh
+3. **Include monitoring** in monitor-test.sh
+4. **Document** in this README
+
+### Test Case Template
+
+```bash
+scenario_new_test() {
+    log "INFO" "=== New Test Scenario ==="
+    
+    # Setup phase
+    log "INFO" "Setting up test conditions..."
+    
+    # Action phase
+    log "INFO" "Executing test actions..."
+    
+    # Verification phase
+    log "INFO" "Verifying results..."
+    test_endpoint "http://test.local" "Test description"
+    
+    # Cleanup phase
+    log "INFO" "Cleaning up..."
+}
+```
+
+This enhanced testing environment provides comprehensive validation of nginx-proxy-watch functionality across various real-world scenarios.
