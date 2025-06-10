@@ -1,6 +1,9 @@
 // project/src/api-server.ts
 import express from "express";
 import http from "http";
+import https from "https";
+import fs from "fs";
+import path from "path";
 import { AddressInfo } from "net";
 import { docker } from "./config";
 import { serverListState } from "./state";
@@ -15,10 +18,11 @@ import {
 
 /**
  * API server for monitoring and health checks
+ * Supports both HTTP and HTTPS protocols
  */
 export const startApiServer = async (
   port: number = 8080
-): Promise<http.Server> => {
+): Promise<http.Server | https.Server> => {
   const app = express();
 
   // JSON middleware
@@ -396,17 +400,66 @@ export const startApiServer = async (
     }
   });
 
-  // Create HTTP server
-  const server = http.createServer(app);
+  // Check if HTTPS is enabled via environment variables (default: true)
+  const httpsEnabled = process.env.API_HTTPS_ENABLED !== "false";
+  const httpsPort = parseInt(process.env.API_HTTPS_PORT || "8443");
 
-  // Start the server
-  server.listen(port, () => {
-    const address = server.address() as AddressInfo;
-    logger.info(`API server listening on port ${address.port}`, {
-      operation: "api_server_start",
+  // Create HTTP server
+  const httpServer = http.createServer(app);
+
+  // Start HTTP server
+  httpServer.listen(port, () => {
+    const address = httpServer.address() as AddressInfo;
+    logger.info(`API HTTP server listening on port ${address.port}`, {
+      operation: "api_http_server_start",
       port: address.port,
     });
   });
 
-  return server;
+  // Create and start HTTPS server if enabled
+  if (httpsEnabled) {
+    try {
+      // Certificate paths
+      const certPath =
+        process.env.API_HTTPS_CERT_PATH ||
+        "/app/project/src/certs/shop.co.kr_crt.pem";
+      const keyPath =
+        process.env.API_HTTPS_KEY_PATH ||
+        "/app/project/src/certs/shop.co.kr_key.pem";
+
+      // Check if certificate files exist
+      if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
+        logger.error("HTTPS certificate files not found", {
+          operation: "api_https_server_start",
+          certPath,
+          keyPath,
+        });
+      } else {
+        // HTTPS options
+        const httpsOptions = {
+          cert: fs.readFileSync(certPath),
+          key: fs.readFileSync(keyPath),
+        };
+
+        // Create HTTPS server
+        const httpsServer = https.createServer(httpsOptions, app);
+
+        // Start HTTPS server
+        httpsServer.listen(httpsPort, () => {
+          const address = httpsServer.address() as AddressInfo;
+          logger.info(`API HTTPS server listening on port ${address.port}`, {
+            operation: "api_https_server_start",
+            port: address.port,
+          });
+        });
+      }
+    } catch (error: any) {
+      logger.error("Failed to start HTTPS server", {
+        operation: "api_https_server_start",
+        error: error.message,
+      });
+    }
+  }
+
+  return httpServer;
 };

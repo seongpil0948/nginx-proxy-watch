@@ -1,6 +1,6 @@
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.123.0-386
+    image: otel/opentelemetry-collector-contrib:0.128.0
     restart: always
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yaml"]
@@ -27,13 +27,15 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      - "18080:8080"
+      - "18080:8080" # API HTTP (외부:내부)
+      - "18443:8443" # API HTTPS (외부:내부)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./nginx-proxy/.env:/etc/nginx/.env:ro
       - ./nginx-proxy/local_certs:/etc/nginx/certs:ro
       - ./nginx-proxy/local_logs/nginx:/var/log/nginx
       - ./nginx-proxy/local_logs/watcher:/var/log/docker-event-watcher
+      # API_HTTPS_ENABLED=true (기본값)
     restart: always
     networks:
       - test-network

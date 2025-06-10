@@ -1,5 +1,6 @@
 node_modules
 project/dist
+project/src/certs/*.pem
 yarn.lock
 yarn-error.log
 
@@ -12,3 +13,4 @@ yarn-error.log
 example/nginx-proxy
 
 test_results
+
