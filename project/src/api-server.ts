@@ -25,16 +25,60 @@ export const startApiServer = async (
 ): Promise<http.Server | https.Server> => {
   const app = express();
 
+  // Trust proxy to get correct client IP
+  app.set("trust proxy", true);
+
   // JSON middleware
   app.use(express.json());
 
+  // CORS middleware for API access
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS"
+    );
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+
+    if (req.method === "OPTIONS") {
+      res.sendStatus(200);
+      return;
+    }
+    next();
+  });
+
+  // Middleware to handle minimal/headerless requests
+  app.use((req, res, next) => {
+    // Set default content-type if not present
+    if (!req.headers["content-type"]) {
+      req.headers["content-type"] = "application/json";
+    }
+
+    // Set default host if not present
+    if (!req.headers["host"]) {
+      req.headers["host"] = "localhost";
+    }
+
+    next();
+  });
+
   // Middleware for logging requests
   app.use((req, res, next) => {
+    const realIp =
+      req.headers["x-real-ip"] ||
+      req.headers["x-forwarded-for"] ||
+      req.ip ||
+      "unknown";
     logger.info(`API Request: ${req.method} ${req.path}`, {
       operation: "api_request",
       method: req.method,
       path: req.path,
-      ip: req.ip,
+      ip: realIp,
+      headers: req.headers,
+      httpVersion: req.httpVersion,
     });
     next();
   });
@@ -59,6 +103,24 @@ export const startApiServer = async (
 
   app.get("/health", async (req, res) => {
     try {
+      // Log request details for debugging
+      logger.info(`Health check requested`, {
+        operation: "health_check_request",
+        path: req.path,
+        originalUrl: req.originalUrl,
+        baseUrl: req.baseUrl,
+        headers: req.headers,
+        httpVersion: req.httpVersion,
+      });
+
+      // Set response headers for compatibility
+      res.set({
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+      });
+
       // Get server list
       const serverList = serverListState.get();
       const serverCount = Object.keys(serverList).length;
@@ -87,7 +149,7 @@ export const startApiServer = async (
         status === "healthy" ? 200 : status === "degraded" ? 200 : 503;
 
       // Return detailed health report
-      res.status(httpStatus).json({
+      const response = {
         status,
         timestamp: new Date().toISOString(),
         servers: {
@@ -104,11 +166,20 @@ export const startApiServer = async (
             containers: s.containers.length,
             unhealthyCount: s.containers.filter((c) => !c.healthy).length,
           })),
+      };
+
+      logger.info(`Health check completed`, {
+        operation: "health_check_response",
+        status,
+        httpStatus,
       });
+
+      res.status(httpStatus).json(response);
     } catch (error: any) {
       logger.error(`Health check failed`, {
-        operation: "health_check",
+        operation: "health_check_error",
         error: error.message,
+        stack: error.stack,
       });
 
       res.status(500).json({
@@ -407,12 +478,27 @@ export const startApiServer = async (
   // Create HTTP server
   const httpServer = http.createServer(app);
 
+  // Error handling for HTTP server
+  httpServer.on("error", (error: any) => {
+    logger.error(`HTTP server error`, {
+      operation: "api_http_server_error",
+      error: error.message,
+      code: error.code,
+      port,
+    });
+
+    if (error.code === "EADDRINUSE") {
+      logger.error(`Port ${port} is already in use`);
+    }
+  });
+
   // Start HTTP server
-  httpServer.listen(port, () => {
+  httpServer.listen(port, "0.0.0.0", () => {
     const address = httpServer.address() as AddressInfo;
     logger.info(`API HTTP server listening on port ${address.port}`, {
       operation: "api_http_server_start",
       port: address.port,
+      host: "0.0.0.0",
     });
   });
 
@@ -444,12 +530,27 @@ export const startApiServer = async (
         // Create HTTPS server
         const httpsServer = https.createServer(httpsOptions, app);
 
+        // Error handling for HTTPS server
+        httpsServer.on("error", (error: any) => {
+          logger.error(`HTTPS server error`, {
+            operation: "api_https_server_error",
+            error: error.message,
+            code: error.code,
+            port: httpsPort,
+          });
+
+          if (error.code === "EADDRINUSE") {
+            logger.error(`Port ${httpsPort} is already in use`);
+          }
+        });
+
         // Start HTTPS server
-        httpsServer.listen(httpsPort, () => {
+        httpsServer.listen(httpsPort, "0.0.0.0", () => {
           const address = httpsServer.address() as AddressInfo;
           logger.info(`API HTTPS server listening on port ${address.port}`, {
             operation: "api_https_server_start",
             port: address.port,
+            host: "0.0.0.0",
           });
         });
       }
