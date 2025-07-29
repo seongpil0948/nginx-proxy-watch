@@ -1,4 +1,6 @@
-upstream <%= serverName %> {
+<%
+const sanitizeServerName = (name) => name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_.]/g, '_').toLowerCase();
+%>upstream <%= sanitizeServerName(serverName) %> {
    least_conn;     # Connect to server with least connections
    <% network.forEach(nw => { %>
    <% if (nw.ip && nw.ip.includes(':') && nw.ip.split(':')[0].trim() !== '') { %>

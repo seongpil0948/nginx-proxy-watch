@@ -29,6 +29,7 @@ make setup-hosts  # Requires sudo to add test domains to /etc/hosts
 # Start/stop test environment
 make start        # Basic start
 make start-full   # With OpenTelemetry monitoring
+make start-quick  # Quick start with basic tests
 make stop
 make restart
 
@@ -37,9 +38,12 @@ make test         # All test scenarios
 make test-restart # Container restart tests
 make test-scale   # Scaling tests
 make test-health  # Health check tests
+make test-network # Network partition tests
+make test-chaos   # Chaos engineering tests
 
 # Monitoring
 make monitor      # Live dashboard
+make monitor-logs # Follow logs in real-time
 make logs         # Show logs
 make status       # Current status
 ```
@@ -73,6 +77,7 @@ make shell-app APP=main
 - `API_HTTPS_PORT`: HTTPS API server port (default: 8443)
 - `API_HTTPS_CERT_PATH`: Path to SSL certificate file (default: /dist/certs/shop.co.kr_crt.pem)
 - `API_HTTPS_KEY_PATH`: Path to SSL private key file (default: /dist/certs/shop.co.kr_key.pem)
+- `REQUIRED_SERVERS`: Comma-separated list of critical server names that must be available
 
 ### Key Environment Variables for Containers
 - `VIRTUAL_HOST`: Domain name for the service
@@ -88,9 +93,29 @@ make shell-app APP=main
 - Automatically removes unhealthy containers from upstream
 
 ### Health Monitoring
+- Enhanced container health checks with Docker health status integration
 - Periodic health checks for all containers
 - Automatic removal of unhealthy containers from Nginx upstream
+- Required servers monitoring ensures critical services are always available
 - API endpoints for monitoring at `/health` and `/containers`
+
+### Advanced Features
+
+#### Network Validation (`src/util/make.ts`)
+- Validates IP addresses and ports before generating configurations
+- Filters out invalid network entries automatically
+- Prevents broken upstream configurations
+
+#### Cookie-Based Routing
+- Template selection based on routing requirements
+- Supports complex routing maps with cookie values
+- Automatic template fallback for missing configurations
+
+#### Container Health Status
+- Checks Docker's native health check results
+- Monitors container restart counts
+- Tracks health check failing streaks
+- Detailed health logging with timestamps
 
 ## Testing Approach
 
@@ -99,6 +124,27 @@ The project includes comprehensive test infrastructure in the `example/` directo
 - Test scripts (`test-scenarios.sh`) for various failure modes
 - Monitoring tools (`monitor-test.sh`) for real-time observation
 - OpenTelemetry integration for distributed tracing
+- Chaos engineering tests for resilience validation
+
+## Project Structure
+
+```
+nginx-proxy-watch/
+├── project/               # TypeScript source code
+│   ├── src/
+│   │   ├── api-server.ts  # HTTP/HTTPS API server
+│   │   ├── health-checker.ts # Enhanced health monitoring
+│   │   ├── util/
+│   │   │   ├── make.ts    # Nginx config generation with validation
+│   │   │   └── ...
+│   │   └── ...
+│   ├── dist/             # Compiled JavaScript
+│   └── package.json
+├── templates/            # EJS templates for Nginx configs
+├── example/              # Test environment and sample apps
+├── conf/                 # Base Nginx configuration
+└── Makefile             # Development commands
+```
 
 ## Important Notes
 
@@ -107,3 +153,5 @@ The project includes comprehensive test infrastructure in the `example/` directo
 - Docker socket must be mounted for the service to work (`/var/run/docker.sock`)
 - Nginx configurations are generated in `/etc/nginx/conf.d/`
 - The service automatically reconnects if Docker daemon becomes unavailable
+- Network validation ensures only valid IP:PORT combinations are used in upstream configs
+- Cookie routing templates are automatically selected when cookie-based routing is configured

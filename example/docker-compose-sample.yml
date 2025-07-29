@@ -42,7 +42,21 @@ services:
 
   # --- 테스트 앱 정의 ---
 
-  # 1. 기본 Vhost 테스트
+  # 1. 다중 도메인 테스트 (공백으로 구분)
+  app-multidomain:
+    build:
+      context: .
+      dockerfile: ./app-multidomain/Dockerfile
+    environment:
+      VIRTUAL_HOST: "dw.test.local rp.test.local *.test.local" # 공백으로 구분된 다중 도메인
+      VIRTUAL_PORT: 3000
+    expose:
+      - "3000"
+    restart: always
+    networks:
+      - test-network
+
+  # 2. 기본 Vhost 테스트
   app-main:
     build:
       context: .

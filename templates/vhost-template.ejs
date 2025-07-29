@@ -1,3 +1,6 @@
+<%
+const sanitizeServerName = (name) => name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_.]/g, '_').toLowerCase();
+%>
 <% if(https) {%>
 server {
     listen 80 ;
@@ -6,8 +9,8 @@ server {
 
     charset utf-8;
 
-    access_log  /var/log/nginx/<%= serverName %>/access.log;
-    error_log   /var/log/nginx/<%= serverName %>/error.log;
+    access_log  /var/log/nginx/<%= sanitizeServerName(serverName) %>/access.log;
+    error_log   /var/log/nginx/<%= sanitizeServerName(serverName) %>/error.log;
 
     location / {
         return 301 https://$host$request_uri;
@@ -24,8 +27,8 @@ server {
 
     charset utf-8;
 
-    access_log  /var/log/nginx/<%= serverName %>/access.log;
-    error_log   /var/log/nginx/<%= serverName %>/error.log;
+    access_log  /var/log/nginx/<%= sanitizeServerName(serverName) %>/access.log;
+    error_log   /var/log/nginx/<%= sanitizeServerName(serverName) %>/error.log;
 
     <% if (https) {%>
     ssl_session_timeout 5m;
@@ -83,10 +86,10 @@ server {
         proxy_set_header       Upgrade $http_upgrade;
         proxy_set_header       Connection "upgrade";
 
-        proxy_pass http://<%= serverName %>;
+        proxy_pass http://<%= sanitizeServerName(serverName) %>;
         charset  UTF-8;
-        access_log  /var/log/nginx/<%= serverName %>/access-was.log otel_combined;
-        error_log   /var/log/nginx/<%= serverName %>/error-was.log;
+        access_log  /var/log/nginx/<%= sanitizeServerName(serverName) %>/access-was.log otel_combined;
+        error_log   /var/log/nginx/<%= sanitizeServerName(serverName) %>/error-was.log;
     }
     <% }%>
 

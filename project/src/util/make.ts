@@ -7,6 +7,7 @@ import { writeFileSync, existsSync, unlink, mkdirSync } from "fs";
 import { templates } from "../config";
 import { serverListState } from "../state";
 import { logger } from "./logging";
+import { sanitizeServerName } from "./sanitize";
 
 /**
  * Check if container has valid network entries
@@ -87,8 +88,9 @@ const makeUpstream = async (conItem: IContainerStatusItem): Promise<void> => {
     return;
   }
 
-  const configPath = `${templates.upstream.TARGET_PATH}/${templates.upstream.PREFIX}${conItem.serverName}.conf`;
-  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
+  const sanitizedServerName = sanitizeServerName(conItem.serverName);
+  const configPath = `${templates.upstream.TARGET_PATH}/${templates.upstream.PREFIX}${sanitizedServerName}.conf`;
+  const nginxLogPath = `/var/log/nginx/${sanitizedServerName}`;
 
   try {
     // Filter valid network entries
@@ -244,8 +246,9 @@ const makeVhost = async (conItem: IContainerStatusItem): Promise<void> => {
 
   // 설정 파일 경로 정의 (vhost 디렉토리 사용)
   const configPath = `${templates.vhost.TARGET_PATH}/${templates.vhost.PREFIX}${configFileName}.conf`;
-  // 로그 파일 경로 정의 (serverName 기준)
-  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
+  // 로그 파일 경로 정의 (sanitized serverName 기준)
+  const sanitizedServerName = sanitizeServerName(conItem.serverName);
+  const nginxLogPath = `/var/log/nginx/${sanitizedServerName}`;
 
   try {
     // 네트워크 정보가 하나 이상 있을 때만 vhost 파일 생성 또는 업데이트
@@ -355,7 +358,8 @@ const makeLocation = async (conItem: IContainerStatusItem): Promise<void> => {
 
   const locationDir = `${templates.location.TARGET_PATH}${conItem.host}`;
   const configPath = `${locationDir}/${templates.location.PREFIX}${conItem.serverName}.conf`;
-  const nginxLogPath = `/var/log/nginx/${conItem.serverName}`;
+  const sanitizedServerName = sanitizeServerName(conItem.serverName);
+  const nginxLogPath = `/var/log/nginx/${sanitizedServerName}`;
 
   try {
     if (conItem.network.length > 0) {

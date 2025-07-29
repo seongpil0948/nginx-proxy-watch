@@ -33,7 +33,7 @@ setup: ## Setup test environment and dependencies
 
 setup-hosts: ## Add test domains to hosts file (requires sudo)
 	@echo "$(YELLOW)Adding test domains to hosts file...$(RESET)"
-	@echo "127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local failure.test.local" | sudo tee -a /etc/hosts
+	@echo "127.0.0.1 alpha-main.test.local group.test.local cookie.test.local secure.test.local balance.test.local multipath.test.local failure.test.local dw.test.local rp.test.local multi.test.local" | sudo tee -a /etc/hosts
 	@echo "$(GREEN)✓ Hosts file updated$(RESET)"
 
 # Environment Management
